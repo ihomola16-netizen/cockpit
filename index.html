@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="sk">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trading Cockpit</title>
+    <meta name="theme-color" content="#0f1113" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="landing.css" />
+  </head>
+  <body>
+    <main class="landing">
+      <section>
+        <p class="eyebrow">Binance Futures</p>
+        <h1>Trading Cockpit</h1>
+        <p class="lead">Market scanner, multi-timeframe bias, open trades tracking, triggers and trade management in one lightweight web app.</p>
+        <div class="actions">
+          <a class="primary" href="analysis.html">Otvorit analyzator</a>
+          <a href="README.md">Dokumentacia</a>
+        </div>
+      </section>
+      <section class="status-card">
+        <span>Static web app</span>
+        <strong>Ready for GitHub Pages</strong>
+        <p>Appka pouziva verejne Binance market data. Nezadava obchody a nepouziva Binance API kluce.</p>
+      </section>
+    </main>
+    <script>
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("sw.js").catch(() => {});
+      }
+    </script>
+  </body>
+</html>

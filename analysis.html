@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="sk">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Market Analysis Cockpit</title>
+    <link rel="stylesheet" href="analysis.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Binance Futures</p>
+          <h1>Market Analysis Cockpit</h1>
+        </div>
+        <div class="controls">
+          <label>
+            Watchlist
+            <select id="coinSelect">
+              <option value="BTCUSDT">BTC</option>
+              <option value="ETHUSDT">ETH</option>
+              <option value="SOLUSDT">SOL</option>
+              <option value="BNBUSDT">BNB</option>
+              <option value="XRPUSDT">XRP</option>
+              <option value="DOGEUSDT">DOGE</option>
+              <option value="ADAUSDT">ADA</option>
+              <option value="AVAXUSDT">AVAX</option>
+              <option value="LINKUSDT">LINK</option>
+            </select>
+          </label>
+          <label>
+            Par
+            <input id="symbol" value="BTCUSDT" autocomplete="off" />
+          </label>
+          <label>
+            Styl
+            <select id="tradeStyle">
+              <option value="scalp">Scalp</option>
+              <option value="intraday" selected>Intraday</option>
+              <option value="swing">Swing</option>
+            </select>
+          </label>
+          <label>
+            Filozofia
+            <select id="traderLens">
+              <option value="standard">Standard</option>
+              <option value="eliz">Patience / range</option>
+            </select>
+          </label>
+          <label>
+            Timeframe
+            <select id="timeframe">
+              <option value="1m">1m</option>
+              <option value="5m">5m</option>
+              <option value="15m">15m</option>
+              <option value="1h" selected>1h</option>
+              <option value="4h">4h</option>
+              <option value="1d">1d</option>
+            </select>
+          </label>
+          <button id="refreshButton" type="button">Obnovit</button>
+          <div class="live-pill">
+            <span>Live cena</span>
+            <strong id="headerLivePrice">-</strong>
+          </div>
+        </div>
+      </header>
+
+      <nav class="app-nav" aria-label="Sekcie">
+        <button class="nav-button active" type="button" data-view="home">Domov</button>
+        <button class="nav-button" type="button" data-view="analysis">Analyza</button>
+        <button class="nav-button" type="button" data-view="scanner">Scanner</button>
+        <button class="nav-button" type="button" data-view="entries">Vstupy</button>
+        <button class="nav-button" type="button" data-view="trades">Open Trades</button>
+      </nav>
+
+      <section class="hero-grid view-section" data-section="home">
+        <article class="verdict" id="verdictCard">
+          <span>Market bias</span>
+          <strong id="biasLabel">Cakam na data</strong>
+          <p id="biasText">Cockpit cita verejne futures data a sklada z nich rozhodnutie.</p>
+        </article>
+        <article>
+          <span>Live cena</span>
+          <strong id="livePrice">-</strong>
+          <p id="priceState">Pripajam stream...</p>
+        </article>
+        <article>
+          <span>Funding</span>
+          <strong id="funding">-</strong>
+          <p id="fundingText">Crowded direction filter.</p>
+        </article>
+        <article>
+          <span>Open interest</span>
+          <strong id="openInterest">-</strong>
+          <p id="oiText">Zaujimavost futures trhu.</p>
+        </article>
+      </section>
+
+      <section class="panel chart-panel view-section" data-section="home analysis">
+        <div class="panel-heading">
+          <h2>Graf a struktura</h2>
+          <div class="legend">
+            <span><i class="ema20"></i>EMA20</span>
+            <span><i class="ema50"></i>EMA50</span>
+            <span><i class="ema200"></i>EMA200</span>
+            <span><i class="vwap"></i>VWAP</span>
+          </div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="priceChart" width="1300" height="520"></canvas>
+          <div id="chartEmpty" class="chart-empty">Cakam na sviecky...</div>
+        </div>
+      </section>
+
+      <section class="analysis-grid">
+        <section class="panel view-section" data-section="home analysis">
+          <div class="panel-heading">
+            <h2>Indikatory</h2>
+            <span id="updatedAt">-</span>
+          </div>
+          <div class="metric-grid">
+            <article><span>EMA stack</span><strong id="emaStack">-</strong></article>
+            <article><span>RSI 14</span><strong id="rsi">-</strong></article>
+            <article><span>MACD</span><strong id="macd">-</strong></article>
+            <article><span>ATR</span><strong id="atr">-</strong></article>
+            <article><span>VWAP pozicia</span><strong id="vwapPosition">-</strong></article>
+            <article><span>Volume</span><strong id="volume">-</strong></article>
+          </div>
+        </section>
+
+        <section class="panel mtf-panel view-section" data-section="home analysis">
+          <div class="panel-heading">
+            <h2>Multi-Timeframe Bias</h2>
+            <button id="refreshMtfButton" type="button">Obnovit MTF</button>
+          </div>
+          <div class="mtf-grid">
+            <article><span>15m</span><strong id="mtf15m">-</strong><p id="mtf15mText">-</p></article>
+            <article><span>1h</span><strong id="mtf1h">-</strong><p id="mtf1hText">-</p></article>
+            <article><span>4h</span><strong id="mtf4h">-</strong><p id="mtf4hText">-</p></article>
+          </div>
+          <div class="mtf-summary" id="mtfSummary">MTF zaver sa objavi po nacitani.</div>
+        </section>
+
+        <section class="panel scanner-panel view-section" data-section="home scanner">
+          <div class="panel-heading">
+            <h2>Opportunity Scanner</h2>
+            <div class="actions">
+              <select id="scannerThreshold" aria-label="Minimalne skore">
+                <option value="60">Skore >= 60</option>
+                <option value="70" selected>Skore >= 70</option>
+                <option value="80">Skore >= 80</option>
+              </select>
+              <select id="scannerStyle" aria-label="Styl scanneru">
+                <option value="scalp">Scalp</option>
+                <option value="intraday" selected>Intraday</option>
+                <option value="swing">Swing</option>
+              </select>
+              <button id="scanButton" type="button">Skenovat</button>
+            </div>
+          </div>
+          <div class="scanner-status" id="scannerStatus">Pripraveny prejst watchlist.</div>
+          <div class="scanner-list" id="scannerList"></div>
+        </section>
+
+        <section class="panel scanner-guide-panel view-section" data-section="scanner">
+          <div class="panel-heading">
+            <h2>Scanner Kriteria</h2>
+            <span>ako citat vysledky</span>
+          </div>
+          <div class="scanner-guide">
+            <article><strong>ATR</strong><p>Volatilita. Vyssie ATR dava viac priestoru na pohyb, ale aj vacsie riziko.</p></article>
+            <article><strong>Volume</strong><p>Aktualny objem oproti priemeru. Nad 1.0x znamena, ze pohyb ma vacsiu ucast.</p></article>
+            <article><strong>TF aligned</strong><p>Kolko timeframe 15m / 1h / 4h podporuje smer kandidata. Cim viac, tym cistejsi kontext.</p></article>
+            <article><strong>OI</strong><p>Open Interest kontext. Sleduje, ci do pohybu prichadzaju nove pozicie alebo sa len zatvaraju.</p></article>
+            <article><strong>RS vs BTC</strong><p>Relative strength. Alt, ktory prekonava BTC, ma lepsi long kontext; slabsi alt ma short bias.</p></article>
+            <article><strong>Room</strong><p>Priestor k najblizsiemu supportu/rezistencii v ATR. Nizky room znamena horsi pomer riziko/zisk.</p></article>
+            <article><strong>VWAP ext</strong><p>Ako daleko je cena od VWAP v ATR. Prilis vysoka hodnota znamena chase/FOMO riziko.</p></article>
+            <article><strong>Spread</strong><p>Bid/ask rozdiel. Uzky spread je likvidnejsi trh; siroky spread znizuje kvalitu setupu.</p></article>
+            <article><strong>Edge gap</strong><p>Rozdiel medzi Long a Short skore. Velky gap znamena presvedcivejsi smer.</p></article>
+          </div>
+        </section>
+
+        <section class="panel trader-feed-panel view-section" data-section="feed">
+          <div class="panel-heading">
+            <h2>Trader Feed</h2>
+            <button id="reloadFeedButton" type="button">Nacitat feed</button>
+          </div>
+          <div class="feed-status" id="feedStatus">Feed este nie je nacitany.</div>
+          <div class="feed-list" id="feedList"></div>
+        </section>
+
+        <section class="panel ai-panel view-section" data-section="analysis">
+          <div class="panel-heading">
+            <h2>AI komentar</h2>
+            <button id="aiCommentButton" type="button">Vysvetlit setup</button>
+          </div>
+          <div class="ai-comment" id="aiComment">
+            Po nacitani trhu klikni na vysvetlenie. Komentar zhrnie, preco filter preferuje long, short alebo cakanie.
+          </div>
+          <textarea id="aiPrompt" rows="5" readonly placeholder="Tu sa objavi prompt so snapshotom, ktory mi mozes poslat do chatu na hlbsiu analyzu."></textarea>
+        </section>
+
+        <section class="panel philosophy-panel view-section" data-section="analysis">
+          <div class="panel-heading">
+            <h2>Filozofia filtra</h2>
+            <span id="philosophyName">STANDARD</span>
+          </div>
+          <div class="philosophy-copy" id="philosophyCopy">
+            Standardny filter kombinuje trend, momentum, volatilitu, volume, funding a urovne.
+          </div>
+          <ul class="rules" id="philosophyRules"></ul>
+        </section>
+
+        <section class="panel directional-filter-panel view-section" data-section="home analysis">
+          <div class="panel-heading">
+            <h2>Rozhodovaci filter</h2>
+            <span class="score">Long vs Short</span>
+          </div>
+          <div class="filter-columns">
+            <article>
+              <div class="filter-title">
+                <strong>Long filter</strong>
+                <span id="longFilterScore">0/100</span>
+              </div>
+              <ul class="rules weighted-rules" id="longRules"></ul>
+            </article>
+            <article>
+              <div class="filter-title">
+                <strong>Short filter</strong>
+                <span id="shortFilterScore">0/100</span>
+              </div>
+              <ul class="rules weighted-rules" id="shortRules"></ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel view-section" data-section="analysis">
+          <div class="panel-heading">
+            <h2>Urovne</h2>
+            <span>poslednych 120 sviec</span>
+          </div>
+          <div class="levels">
+            <article><span>Rezistencia</span><strong id="resistance">-</strong></article>
+            <article><span>Support</span><strong id="support">-</strong></article>
+            <article><span>Mid range</span><strong id="midRange">-</strong></article>
+          </div>
+        </section>
+
+        <section class="panel view-section" data-section="analysis entries">
+          <div class="panel-heading">
+            <h2>Scenare</h2>
+            <span id="scenarioMode">-</span>
+          </div>
+          <div class="scenarios">
+            <article>
+              <strong>Long iba ak</strong>
+              <p id="longScenario">-</p>
+            </article>
+            <article>
+              <strong>Short iba ak</strong>
+              <p id="shortScenario">-</p>
+            </article>
+            <article>
+              <strong>Nic nerobit ak</strong>
+              <p id="waitScenario">-</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel entries-panel view-section" data-section="home entries">
+          <div class="panel-heading">
+            <h2>Vstupy na vyber</h2>
+            <span id="entryStyleLabel">INTRADAY</span>
+          </div>
+          <div class="entry-grid">
+            <article class="long-card">
+              <span>Long plan</span>
+              <strong id="longQuality">-</strong>
+              <dl>
+                <div><dt>Vstup A</dt><dd id="longEntryA">-</dd></div>
+                <div><dt>Vstup B</dt><dd id="longEntryB">-</dd></div>
+                <div><dt>Stop</dt><dd id="longStop">-</dd></div>
+                <div><dt>Targety</dt><dd id="longTargets">-</dd></div>
+              </dl>
+              <p id="longReason">-</p>
+            </article>
+            <article class="short-card">
+              <span>Short plan</span>
+              <strong id="shortQuality">-</strong>
+              <dl>
+                <div><dt>Vstup A</dt><dd id="shortEntryA">-</dd></div>
+                <div><dt>Vstup B</dt><dd id="shortEntryB">-</dd></div>
+                <div><dt>Stop</dt><dd id="shortStop">-</dd></div>
+                <div><dt>Targety</dt><dd id="shortTargets">-</dd></div>
+              </dl>
+              <p id="shortReason">-</p>
+            </article>
+          </div>
+        </section>
+      </section>
+
+      <section class="panel trades-panel view-section" data-section="home trades">
+        <div class="panel-heading">
+          <h2>Open Trades</h2>
+          <button id="addTradeButton" type="button">Pridat obchod</button>
+        </div>
+        <div class="trade-form">
+          <label>Par <input id="tradeSymbol" value="BTCUSDT" /></label>
+          <label>Smer
+            <select id="tradeSide">
+              <option value="long">Long</option>
+              <option value="short">Short</option>
+            </select>
+          </label>
+          <label>Paka <input id="tradeLeverage" type="number" min="1" max="125" step="1" value="10" /></label>
+          <label>Entry <input id="tradeEntry" type="number" step="0.0001" /></label>
+          <label>Velkost
+            <select id="tradeSizeMode">
+              <option value="notional">Size USDT</option>
+              <option value="qty">Qty coin</option>
+            </select>
+          </label>
+          <label>Hodnota <input id="tradeQty" type="number" step="0.0001" /></label>
+          <label>Stop <input id="tradeStop" type="number" step="0.0001" /></label>
+          <label>Target <input id="tradeTarget" type="number" step="0.0001" /></label>
+        </div>
+        <textarea id="tradeNote" rows="2" placeholder="Poznamka k obchodu..."></textarea>
+        <div class="open-trades" id="openTrades"></div>
+      </section>
+
+      <section class="panel triggers-panel view-section" data-section="trades">
+        <div class="panel-heading">
+          <h2>Trade Triggers</h2>
+          <button id="addTriggerButton" type="button">Pridat trigger</button>
+        </div>
+        <div class="trade-form">
+          <label>Par <input id="triggerSymbol" value="BTCUSDT" /></label>
+          <label>Podmienka
+            <select id="triggerCondition">
+              <option value="above">Cena >=</option>
+              <option value="below">Cena <=</option>
+            </select>
+          </label>
+          <label>Trigger cena <input id="triggerPrice" type="number" step="0.0001" /></label>
+          <label>Smer
+            <select id="triggerSide">
+              <option value="long">Long</option>
+              <option value="short">Short</option>
+            </select>
+          </label>
+          <label>Paka <input id="triggerLeverage" type="number" min="1" max="125" step="1" value="10" /></label>
+          <label>Velkost
+            <select id="triggerSizeMode">
+              <option value="notional">Size USDT</option>
+              <option value="qty">Qty coin</option>
+            </select>
+          </label>
+          <label>Hodnota <input id="triggerSize" type="number" step="0.0001" /></label>
+          <label>Stop <input id="triggerStop" type="number" step="0.0001" /></label>
+          <label>Target <input id="triggerTarget" type="number" step="0.0001" /></label>
+        </div>
+        <textarea id="triggerNote" rows="2" placeholder="Poznamka k triggeru..."></textarea>
+        <div class="trigger-list" id="triggerList"></div>
+      </section>
+
+      <section class="panel closed-trades-panel view-section" data-section="trades">
+        <div class="panel-heading">
+          <h2>Closed Trades</h2>
+          <button id="clearClosedTradesButton" type="button">Vymazat historiu</button>
+        </div>
+        <div class="closed-stats">
+          <article><span>Obchody</span><strong id="closedCount">0</strong></article>
+          <article><span>Winrate</span><strong id="closedWinrate">-</strong></article>
+          <article><span>Celkove R</span><strong id="closedTotalR">-</strong></article>
+          <article><span>Priemer R</span><strong id="closedAvgR">-</strong></article>
+          <article><span>PnL</span><strong id="closedPnl">-</strong></article>
+        </div>
+        <div class="closed-list" id="closedTrades"></div>
+      </section>
+
+      <dialog id="closeTradeDialog">
+        <form method="dialog" class="close-dialog">
+          <h2>Zavriet obchod v denniku</h2>
+          <p id="closeTradeText">Vyber exit cenu pre ulozenie do historie.</p>
+          <label>
+            Exit cena
+            <input id="closeTradeExit" type="number" step="0.0001" />
+          </label>
+          <div class="dialog-actions">
+            <button id="closeUseLiveButton" type="button">Pouzit live cenu</button>
+            <button id="closeCancelButton" value="cancel">Zrusit</button>
+            <button id="closeConfirmButton" value="confirm">Ulozit zatvorenie</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="editTradeDialog">
+        <form method="dialog" class="close-dialog">
+          <h2>Upravit obchod</h2>
+          <p id="editTradeText">Uprav stop-loss, take-profit alebo poznamku.</p>
+          <label>
+            Stop-loss
+            <input id="editTradeStop" type="number" step="0.0001" />
+          </label>
+          <label>
+            Take-profit
+            <input id="editTradeTarget" type="number" step="0.0001" />
+          </label>
+          <label>
+            Poznamka
+            <textarea id="editTradeNote" rows="3"></textarea>
+          </label>
+          <div class="dialog-actions">
+            <button id="editCancelButton" value="cancel">Zrusit</button>
+            <button id="editConfirmButton" value="confirm">Ulozit zmeny</button>
+          </div>
+        </form>
+      </dialog>
+    </main>
+
+    <script src="analysis.js"></script>
+  </body>
+</html>
