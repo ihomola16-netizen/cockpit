@@ -1,9 +1,0 @@
-{
-  "name": "Trading Cockpit",
-  "short_name": "Cockpit",
-  "start_url": "./analysis.html",
-  "display": "standalone",
-  "background_color": "#0f1113",
-  "theme_color": "#0f1113",
-  "icons": []
-}
