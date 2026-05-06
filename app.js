@@ -72,6 +72,18 @@ function symbol() {
   return ui.symbolInput.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+function selectCoin(pair, view = null) {
+  if (!pair) return;
+  const clean = pair.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!clean) return;
+  ui.symbolInput.value = clean;
+  forceAllChartsToSelectedCoin();
+  refreshDashboard();
+  refreshTradeCharts();
+  renderReal();
+  if (view) setTab(view);
+}
+
 function styleConfig() {
   return STYLE_TF[ui.styleSelect.value] || STYLE_TF.intraday;
 }
@@ -89,6 +101,15 @@ function pct(value, digits = 2) {
 function movePct(from, to, side = "long") {
   if (!Number.isFinite(from) || !Number.isFinite(to) || from === 0) return NaN;
   return ((to - from) / from) * 100 * (side === "long" ? 1 : -1);
+}
+
+function signedPct(value, digits = 2) {
+  if (!Number.isFinite(value)) return "-";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}%`;
+}
+
+function paperTpLevelHtml(level, hit = false) {
+  return `<span class="${hit ? "hit" : ""}" title="Entry ${fmt(level.entry)} | SL ${fmt(level.stop)} | TP ${fmt(level.price)}"><em>${hit ? "✓ " : ""}${level.label}</em><strong>${fmt(level.price)}</strong><b>${signedPct(level.pct)}</b></span>`;
 }
 
 function clamp(value, min, max) {
@@ -572,8 +593,12 @@ function setupType(data, side) {
   return "watch for retest";
 }
 
-function entryPlan(data, side) {
-  const riskAtr = ui.styleSelect.value === "swing" ? 1.4 : ui.styleSelect.value === "scalp" ? 0.55 : 0.9;
+function riskAtrForStyle(style) {
+  return style === "swing" ? 1.4 : style === "scalp" ? 0.55 : 0.9;
+}
+
+function entryPlanForStyle(data, side, style = ui.styleSelect.value) {
+  const riskAtr = riskAtrForStyle(style);
   const entry = side === "long"
     ? Math.max(data.support, Math.min(data.vwapNow, data.price - data.atrNow * 0.35))
     : Math.min(data.resistance, Math.max(data.vwapNow, data.price + data.atrNow * 0.35));
@@ -581,7 +606,82 @@ function entryPlan(data, side) {
   const risk = Math.abs(entry - stop);
   const target1 = side === "long" ? entry + risk * 1.5 : Math.max(0, entry - risk * 1.5);
   const target2 = side === "long" ? entry + risk * 2.3 : Math.max(0, entry - risk * 2.3);
-  return { entry, stop, target1, target2 };
+  return { entry, stop, target1, target2, style };
+}
+
+function entryPlan(data, side) {
+  return entryPlanForStyle(data, side, ui.styleSelect.value);
+}
+
+function tpProfilesForSignal(data, side) {
+  if (!data || !Number.isFinite(data.price) || !Number.isFinite(data.atrNow)) return [];
+  const currentStyle = data.interval === "15m" ? "scalp" : data.interval === "4h" ? "swing" : "intraday";
+  const basePlan = entryPlanForStyle(data, side, currentStyle);
+  const localRisk = Math.abs(basePlan.entry - basePlan.stop);
+  const structureRoom = side === "long" ? Math.max(0, data.resistance - basePlan.entry) : Math.max(0, basePlan.entry - data.support);
+  const swingRisk = Math.max(localRisk * 2.2, data.atrNow * 2.4, basePlan.entry * 0.025);
+  const swingTp1Move = Math.max(swingRisk * 1.2, data.atrNow * 3.2, basePlan.entry * 0.045);
+  const swingTp2Move = Math.max(swingRisk * 1.9, data.atrNow * 5.0, basePlan.entry * 0.075);
+  const capMove = structureRoom > 0 ? Math.max(structureRoom * 0.92, swingTp1Move) : Infinity;
+  const profiles = [
+    { style: "scalp", label: "Scalp", plan: entryPlanForStyle(data, side, "scalp") },
+    { style: "intraday", label: "Intraday", plan: entryPlanForStyle(data, side, "intraday") },
+    {
+      style: "swing",
+      label: "Swing",
+      plan: {
+        ...basePlan,
+        stop: side === "long" ? Math.max(0, basePlan.entry - swingRisk) : basePlan.entry + swingRisk,
+        target1: side === "long"
+          ? basePlan.entry + Math.min(swingTp1Move, capMove)
+          : Math.max(0, basePlan.entry - Math.min(swingTp1Move, capMove)),
+        target2: side === "long"
+          ? basePlan.entry + Math.min(swingTp2Move, capMove * 1.35)
+          : Math.max(0, basePlan.entry - Math.min(swingTp2Move, capMove * 1.35)),
+      },
+    },
+  ];
+  return profiles.map((profile) => {
+    const plan = profile.plan;
+    return {
+      style: profile.style,
+      label: profile.label,
+      plan,
+      tp1Pct: movePct(plan.entry, plan.target1, side),
+      tp2Pct: movePct(plan.entry, plan.target2, side),
+    };
+  });
+}
+
+function tpProfilesHtml(data, side) {
+  const profiles = tpProfilesForSignal(data, side);
+  if (!profiles.length) return `<p class="muted">TP profily sa nepodarilo vypocitat.</p>`;
+  return `<div class="tp-profile-grid">
+    ${profiles.map((profile) => `
+      <article class="tp-profile">
+        <strong>${profile.label}</strong>
+        <span>TP1 ${fmt(profile.plan.target1)} <b>${signedPct(profile.tp1Pct)}</b></span>
+        <span>TP2 ${fmt(profile.plan.target2)} <b>${signedPct(profile.tp2Pct)}</b></span>
+      </article>
+    `).join("")}
+  </div>`;
+}
+
+function paperTpLevels(signal) {
+  const side = signal.side;
+  const profiles = tpProfilesForSignal(signal.data, side);
+  if (!profiles.length) {
+    return [
+      { id: "plan-tp1", label: "Plan TP1", price: signal.plan.target1, pct: movePct(signal.plan.entry, signal.plan.target1, side) },
+      { id: "plan-tp2", label: "Plan TP2", price: signal.plan.target2, pct: movePct(signal.plan.entry, signal.plan.target2, side) },
+    ].filter((level) => Number.isFinite(level.price) && Number.isFinite(level.pct) && level.pct > 0);
+  }
+  return profiles.flatMap((profile) => [
+    { id: `${profile.style}-tp1`, label: `${profile.label} TP1`, price: profile.plan.target1, pct: profile.tp1Pct, entry: profile.plan.entry, stop: profile.plan.stop },
+    { id: `${profile.style}-tp2`, label: `${profile.label} TP2`, price: profile.plan.target2, pct: profile.tp2Pct, entry: profile.plan.entry, stop: profile.plan.stop },
+  ])
+    .filter((level) => Number.isFinite(level.price) && Number.isFinite(level.pct) && level.pct > 0)
+    .sort((a, b) => a.pct - b.pct);
 }
 
 function entryPlans(data) {
@@ -610,9 +710,9 @@ function entryPlanCard(side, score, plan, data) {
       <strong>${setupLabel(score)} (${score}/100)</strong>
       <dl>
         <div><dt>Entry</dt><dd>${fmt(plan.entry)}</dd></div>
-        <div><dt>Stop</dt><dd>${fmt(plan.stop)}</dd></div>
-        <div><dt>TP 1</dt><dd>${fmt(plan.target1)}</dd></div>
-        <div><dt>TP 2</dt><dd>${fmt(plan.target2)}</dd></div>
+        <div><dt>Stop</dt><dd>${fmt(plan.stop)} <small class="loss">${signedPct(movePct(plan.entry, plan.stop, side))}</small></dd></div>
+        <div><dt>TP 1</dt><dd>${fmt(plan.target1)} <small class="win">${signedPct(movePct(plan.entry, plan.target1, side))}</small></dd></div>
+        <div><dt>TP 2</dt><dd>${fmt(plan.target2)} <small class="win">${signedPct(movePct(plan.entry, plan.target2, side))}</small></dd></div>
         <div><dt>Room</dt><dd>${fmt(room, 2)} ATR</dd></div>
       </dl>
       <p>${reason}</p>
@@ -662,7 +762,7 @@ function renderSignals(signals) {
   ui.signalList.innerHTML = signals.map((s) => `
     <article class="signal-card ${s.side}" data-id="${s.id}">
       <div class="signal-head">
-        <div><strong>${s.pair} ${s.side.toUpperCase()}</strong><br><span>${s.setup} | ${s.status}</span></div>
+        <div><strong><button class="coin-link" type="button" data-pair="${s.pair}">${s.pair}</button> ${s.side.toUpperCase()}</strong><br><span>${s.setup} | ${s.status}</span></div>
         <div class="score">${s.score}</div>
       </div>
       <div class="pill-row">
@@ -679,6 +779,12 @@ function renderSignals(signals) {
     const signal = signals.find((s) => s.id === card.dataset.id);
     card.addEventListener("click", () => showSignal(signal));
   });
+  ui.signalList.querySelectorAll(".coin-link").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectCoin(button.dataset.pair, "dashboard");
+    });
+  });
 }
 
 function showSignal(signal) {
@@ -692,6 +798,7 @@ function showSignal(signal) {
       <article><strong>${signal.pair} ${signal.side.toUpperCase()} | ${signal.setup}</strong><p>Status: ${signal.status}. Snapshot je zmrazený zo scanneru.</p></article>
       <article><strong>Plan</strong><p>Trigger entry ${fmt(signal.plan.entry)}, SL ${fmt(signal.plan.stop)}, TP ${fmt(signal.plan.target1)} / ${fmt(signal.plan.target2)}.</p></article>
       <article><strong>Why</strong><p>Coin ${signal.coinQuality}, entry ${signal.entryQuality}, risk ${signal.riskQuality}, edge ${signal.edge}. Bias ${signal.data.bias}, volume ${fmt(signal.data.volumeRatio,2)}x, OI ${signal.data.oi.label}. Style ${signal.style}, timeframe ${signal.timeframe}.</p></article>
+      <article class="tp-profile-panel"><strong>TP podľa štýlu pre ${signal.side.toUpperCase()}</strong>${tpProfilesHtml(signal.data, signal.side)}</article>
       <section class="entry-plan-grid">
         ${entryPlanCard("long", signal.data.longScore, entryPlans(signal.data).long, signal.data)}
         ${entryPlanCard("short", signal.data.shortScore, entryPlans(signal.data).short, signal.data)}
@@ -708,12 +815,15 @@ function showSignal(signal) {
 
 function createPaperTrigger(signal) {
   const triggers = getStore(STORAGE.paperTriggers);
+  const tpLevels = paperTpLevels(signal);
   triggers.unshift({
     id: crypto.randomUUID(),
     signal,
     status: "waiting",
     margin: 10,
     leverage: 10,
+    tpLevels,
+    tpHits: [],
     createdAt: new Date().toISOString(),
   });
   setStore(STORAGE.paperTriggers, triggers);
@@ -730,6 +840,93 @@ function prefillReal(signal) {
   setTab("real");
 }
 
+function cancelPaperTrigger(id) {
+  setStore(STORAGE.paperTriggers, getStore(STORAGE.paperTriggers).filter((trigger) => trigger.id !== id));
+  renderPaper();
+}
+
+function tradingViewUrl(pair = symbol(), interval = styleConfig().context) {
+  const tvInterval = interval === "15m" ? "15" : interval === "4h" ? "240" : "60";
+  const tvSymbol = `BINANCE:${pair}.P`;
+  return `https://www.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol)}&interval=${tvInterval}&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=0f1113&studies=[]&theme=dark&style=1&timezone=Europe%2FBratislava&withdateranges=1&hideideas=1`;
+}
+
+function ensureTradeChart(anchor, id, title) {
+  const existingByTitle = Array.from(document.querySelectorAll("section.panel")).find((panel) => panel.querySelector("h2")?.textContent?.trim() === title);
+  if (existingByTitle) {
+    existingByTitle.id = id;
+    existingByTitle.classList.add("trade-chart-panel");
+    return;
+  }
+  if (!anchor || document.getElementById(id)) return;
+  const panel = document.createElement("section");
+  panel.className = "panel trade-chart-panel";
+  panel.id = id;
+  panel.innerHTML = `
+    <div class="panel-heading">
+      <h2>${title}</h2>
+      <span>${symbol()} | ${styleConfig().context}</span>
+    </div>
+    <div class="chart-wrap compact-chart">
+      <iframe title="${title}" loading="lazy" src="${tradingViewUrl()}"></iframe>
+    </div>
+  `;
+  anchor.insertAdjacentElement("afterend", panel);
+}
+
+function refreshTradeCharts() {
+  const seenTitles = new Set();
+  document.querySelectorAll("section.panel").forEach((panel) => {
+    const title = panel.querySelector("h2")?.textContent?.trim().toLowerCase();
+    if (title !== "paper graf" && title !== "real trades graf") return;
+    if (seenTitles.has(title)) {
+      panel.remove();
+      return;
+    }
+    seenTitles.add(title);
+    panel.classList.add("trade-chart-panel");
+  });
+  document.querySelectorAll(".trade-chart-panel").forEach((panel) => {
+    const meta = panel.querySelector(".panel-heading span");
+    const frame = panel.querySelector("iframe");
+    const url = tradingViewUrl();
+    if (meta) meta.textContent = `${symbol()} | ${styleConfig().context}`;
+    if (frame && frame.dataset.chartUrl !== url) {
+      frame.dataset.chartUrl = url;
+      frame.src = url;
+    }
+  });
+}
+
+function forceAllChartsToSelectedCoin() {
+  const url = tradingViewUrl();
+  document.querySelectorAll("#priceChartFrame, .trade-chart-panel iframe").forEach((frame) => {
+    frame.dataset.chartUrl = url;
+    frame.src = url;
+  });
+  document.querySelectorAll("#chartMeta, .trade-chart-panel .panel-heading span").forEach((meta) => {
+    meta.textContent = `${symbol()} | ${styleConfig().context}`;
+  });
+}
+
+function formatPaperTpMaps() {
+  const cards = [...ui.paperTriggers.querySelectorAll(".trade-card"), ...ui.paperTrades.querySelectorAll(".trade-card")];
+  cards.forEach((card) => {
+    const title = card.querySelector(".trade-head strong")?.textContent || "";
+    const pair = title.split(" ")[0];
+    const side = /SHORT/i.test(title) ? "short" : "long";
+    const allSignals = [
+      ...getStore(STORAGE.paperTriggers).map((t) => t.signal),
+      ...getStore(STORAGE.paperTrades).map((t) => t.signal),
+    ];
+    const signal = allSignals.find((s) => s.pair === pair && s.side === side);
+    const map = card.querySelector(".paper-mini-map");
+    if (!signal || !map) return;
+    const hitLabels = new Set([...map.querySelectorAll(".hit")].map((node) => node.textContent.replace("✓", "").trim().replace(/\s+[+-]?\d.*/, "")));
+    map.innerHTML = paperTpLevels(signal).map((level) => paperTpLevelHtml(level, hitLabels.has(level.label))).join("");
+  });
+}
+
 async function checkPaperTriggers() {
   const triggers = getStore(STORAGE.paperTriggers);
   const trades = getStore(STORAGE.paperTrades);
@@ -743,7 +940,19 @@ async function checkPaperTriggers() {
       const invalid = trigger.signal.side === "long" ? p <= trigger.signal.plan.stop : p >= trigger.signal.plan.stop;
       if (hit) {
         const qty = (trigger.margin * trigger.leverage) / p;
-        trades.unshift({ id: crypto.randomUUID(), ...trigger, status: "active", entry: p, qty, openedAt: new Date().toISOString() });
+        trades.unshift({
+          id: crypto.randomUUID(),
+          ...trigger,
+          status: "active",
+          entry: p,
+          qty,
+          lastPrice: p,
+          pnl: 0,
+          resultR: 0,
+          tpLevels: trigger.tpLevels?.length ? trigger.tpLevels : paperTpLevels(trigger.signal),
+          tpHits: [],
+          openedAt: new Date().toISOString(),
+        });
         changed = true;
       } else if (invalid) {
         trades.unshift({ id: crypto.randomUUID(), ...trigger, status: "invalidated", closedAt: new Date().toISOString(), resultR: 0, pnl: 0 });
@@ -774,13 +983,27 @@ async function updatePaperTrades() {
       const risk = Math.abs(trade.entry - trade.signal.plan.stop) * trade.qty;
       const resultR = risk ? pnl / risk : 0;
       const hitStop = side === "long" ? p <= trade.signal.plan.stop : p >= trade.signal.plan.stop;
-      const hitTarget = side === "long" ? p >= trade.signal.plan.target1 : p <= trade.signal.plan.target1;
+      trade.tpLevels = paperTpLevels(trade.signal);
+      trade.tpHits = trade.tpHits || [];
+      const hitIds = new Set(trade.tpHits.map((hit) => hit.id));
+      for (const level of trade.tpLevels) {
+        const hitLevel = side === "long" ? p >= level.price : p <= level.price;
+        if (hitLevel && !hitIds.has(level.id)) {
+          trade.tpHits.push({ ...level, hitAt: new Date().toISOString(), hitPrice: p });
+          hitIds.add(level.id);
+        }
+      }
+      const lastTarget = trade.tpLevels.at(-1);
+      const hitFinalTarget = lastTarget ? (side === "long" ? p >= lastTarget.price : p <= lastTarget.price) : false;
       trade.lastPrice = p;
       trade.pnl = pnl;
       trade.resultR = resultR;
-      if (hitStop || hitTarget) {
+      if (hitStop || hitFinalTarget) {
         trade.status = hitStop ? "stopped" : "target";
         trade.closedAt = new Date().toISOString();
+        trade.exitPrice = p;
+        trade.exitMovePct = movePct(trade.entry, p, side);
+        trade.exitLeveragedPct = trade.exitMovePct * (trade.leverage || 10);
       }
       changed = true;
     } catch {
@@ -796,21 +1019,57 @@ async function updatePaperTrades() {
 function renderPaper() {
   const triggers = getStore(STORAGE.paperTriggers);
   const trades = getStore(STORAGE.paperTrades);
+  const activeTrades = trades.filter((t) => t.status === "active");
   ui.paperTriggers.innerHTML = triggers.length ? triggers.map((t) => `
     <article class="trade-card ${t.signal.side}">
-      <div class="trade-head"><strong>${t.signal.pair} ${t.signal.side.toUpperCase()}</strong><span>${t.status}</span></div>
-      <span>Waiting entry ${fmt(t.signal.plan.entry)} | SL ${fmt(t.signal.plan.stop)} | TP ${fmt(t.signal.plan.target1)}</span>
-      <span>${planMoveText(t.signal.plan, t.signal.side)}</span>
+      <div class="trade-head"><strong><button class="coin-link" type="button" data-pair="${t.signal.pair}">${t.signal.pair}</button> ${t.signal.side.toUpperCase()}</strong><span>${t.status}</span></div>
+      <div class="paper-price-row">
+        <span>Entry <strong>${fmt(t.signal.plan.entry)}</strong></span>
+        <span>Live <strong>-</strong></span>
+        <span class="sl-chip">SL ${fmt(t.signal.plan.stop)} ${signedPct(movePct(t.signal.plan.entry, t.signal.plan.stop, t.signal.side))}</span>
+      </div>
+      <div class="paper-mini-map">
+        ${paperTpLevels(t.signal).map((level) => `<span title="${level.label.includes("Swing") ? "Swing scenar: vacsi 4h/ATR ciel, nie lokalny rychly vystup. " : ""}Entry ${fmt(level.entry)} | SL ${fmt(level.stop)} | TP ${fmt(level.price)}">${level.label} <b>${signedPct(level.pct)}</b></span>`).join("")}
+      </div>
+      <button type="button" class="secondary paper-cancel" data-id="${t.id}">Zavriet nenaplneny</button>
     </article>
   `).join("") : `<p class="muted">Žiadne čakajúce paper triggre.</p>`;
-  ui.paperTrades.innerHTML = trades.length ? trades.map((t) => `
+  ui.paperTrades.innerHTML = activeTrades.length ? activeTrades.map((t) => `
     <article class="trade-card ${t.signal.side}">
-      <div class="trade-head"><strong>${t.signal.pair} ${t.signal.side.toUpperCase()}</strong><span>${t.status}</span></div>
-      <span>Entry ${fmt(t.entry)} | Last ${fmt(t.lastPrice)} | PnL ${fmt(t.pnl,2)} | ${fmt(t.resultR,2)}R</span>
-      <span>SL ${fmt(t.signal.plan.stop)} | TP ${fmt(t.signal.plan.target1)} / ${fmt(t.signal.plan.target2)} | ${planMoveText(t.signal.plan, t.signal.side).replace("Pohyb: ", "")}</span>
-      <span>Setup ${t.signal.setup} | Score ${t.signal.score}</span>
+      <div class="trade-head"><strong><button class="coin-link" type="button" data-pair="${t.signal.pair}">${t.signal.pair}</button> ${t.signal.side.toUpperCase()}</strong><span>${t.status}</span></div>
+      <div class="paper-price-row">
+        <span>Entry <strong>${fmt(t.entry)}</strong></span>
+        <span>Live <strong>${fmt(t.lastPrice)}</strong></span>
+        <span class="${movePct(t.entry, t.lastPrice, t.signal.side) >= 0 ? "paper-positive" : "paper-negative"}">10x ${signedPct(movePct(t.entry, t.lastPrice, t.signal.side) * (t.leverage || 10))}</span>
+        <span class="sl-chip">SL ${fmt(t.signal.plan.stop)} ${signedPct(movePct(t.entry, t.signal.plan.stop, t.signal.side))}</span>
+      </div>
+      <div class="paper-mini-map">
+        ${paperTpLevels(t.signal).map((level) => {
+          const hit = (t.tpHits || []).some((item) => item.id === level.id);
+          return `<span class="${hit ? "hit" : ""}" title="${level.label.includes("Swing") ? "Swing scenar: vacsi 4h/ATR ciel, nie lokalny rychly vystup. " : ""}Entry ${fmt(level.entry)} | SL ${fmt(level.stop)} | TP ${fmt(level.price)}">${hit ? "✓ " : ""}${level.label} <b>${signedPct(level.pct)}</b></span>`;
+        }).join("")}
+      </div>
+      <span>PNL ${fmt(t.pnl,2)} USDT | ${fmt(t.resultR,2)}R | Setup ${t.signal.setup} | Score ${t.signal.score}</span>
     </article>
-  `).join("") : `<p class="muted">Žiadne paper obchody.</p>`;
+  `).join("") : `<p class="muted">Žiadne aktívne paper obchody. Uzavreté nájdeš v Journal.</p>`;
+  ui.paperTriggers.querySelectorAll(".paper-cancel").forEach((button) => {
+    button.addEventListener("click", () => cancelPaperTrigger(button.dataset.id));
+  });
+  ui.paperTriggers.querySelectorAll(".coin-link").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectCoin(button.dataset.pair, "dashboard");
+    });
+  });
+  ui.paperTrades.querySelectorAll(".coin-link").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectCoin(button.dataset.pair, "dashboard");
+    });
+  });
+  formatPaperTpMaps();
+  ensureTradeChart(ui.paperTrades.closest(".panel") || ui.paperTrades, "paperChartPanel", "Paper graf");
+  refreshTradeCharts();
   renderJournal();
 }
 
@@ -827,10 +1086,17 @@ function renderJournal() {
   ].map(([label, value]) => `<article class="stat-card"><span>${label}</span><strong>${value}</strong></article>`).join("");
   ui.journalList.innerHTML = closed.map((t) => `
     <article class="trade-card ${t.signal.side}">
-      <div class="trade-head"><strong>${t.signal.pair} ${t.signal.setup}</strong><span>${t.status}</span></div>
-      <span>${fmt(t.resultR,2)}R | Score ${t.signal.score} | ${t.signal.style} ${t.signal.timeframe}</span>
+      <div class="trade-head"><strong><button class="coin-link" type="button" data-pair="${t.signal.pair}">${t.signal.pair}</button> ${t.signal.setup}</strong><span>${t.status}</span></div>
+      <span>Entry ${fmt(t.entry)} | Exit ${fmt(t.exitPrice || t.lastPrice)} | ${signedPct(t.exitMovePct ?? movePct(t.entry, t.exitPrice || t.lastPrice, t.signal.side))} | 10x ${signedPct(t.exitLeveragedPct ?? movePct(t.entry, t.exitPrice || t.lastPrice, t.signal.side) * (t.leverage || 10))}</span>
+      <span>${fmt(t.resultR,2)}R | Score ${t.signal.score} | ${t.signal.style || "style"} | ${t.signal.timeframe}</span>
     </article>
   `).join("");
+  ui.journalList.querySelectorAll(".coin-link").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectCoin(button.dataset.pair, "dashboard");
+    });
+  });
 }
 
 function addRealTrade() {
@@ -872,7 +1138,7 @@ async function renderReal() {
     const action = tradeManagement(t, data, r, sideScore, oppositeScore);
     const scenarios = tradeScenarios(t, data, r);
     return `<article class="trade-card real ${t.side}">
-      <div class="trade-head"><strong>${t.pair} ${t.side.toUpperCase()}</strong><span>${fmt(r,2)}R</span></div>
+      <div class="trade-head"><strong><button class="coin-link" type="button" data-pair="${t.pair}">${t.pair}</button> ${t.side.toUpperCase()}</strong><span>${fmt(r,2)}R</span></div>
       <div class="trade-metrics">
         <div><span>Live</span><strong>${fmt(p)}</strong></div>
         <div><span>PnL</span><strong>${fmt(pnl,2)} USDT</strong></div>
@@ -904,6 +1170,14 @@ async function renderReal() {
     </article>`;
   }));
   ui.realTrades.innerHTML = cards.join("") || `<p class="muted">Žiadne real trades.</p>`;
+  ui.realTrades.querySelectorAll(".coin-link").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      selectCoin(button.dataset.pair, "dashboard");
+    });
+  });
+  ensureTradeChart(ui.realTrades.closest(".panel") || ui.realTrades, "realChartPanel", "Real trades graf");
+  refreshTradeCharts();
 }
 
 function tradeManagement(trade, data, r, sideScore, oppositeScore) {
@@ -989,7 +1263,7 @@ function moveChip(plan, side, key) {
 }
 
 function cockpitV2DecorateEntryPlans(root = document) {
-  root.querySelectorAll(".entry-plan, article, .card").forEach((card) => {
+  root.querySelectorAll(".entry-plan").forEach((card) => {
     card.querySelectorAll(".move-chip.auto").forEach((chip) => chip.remove());
     const side = /short/i.test(card.textContent || "") ? "short" : "long";
     const rows = Array.from(card.querySelectorAll("dt"));
@@ -1243,6 +1517,43 @@ function cockpitV2AttachChartHover() {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  const cleanupStyle = document.createElement("style");
+  cleanupStyle.textContent = `
+    .paper-cancel-btn,
+    .tp-map-hint,
+    .paper-roi-chip { display: none !important; }
+    .tp-profile-grid .tp-profile { min-width: 0; }
+    .tp-profile-panel { overflow: hidden; }
+    .entry-plan > .tp-profile-grid { display: none !important; }
+    .paper-cancel { padding: 8px 12px !important; font-size: .88rem !important; border-radius: 7px !important; }
+    .trade-card .paper-mini-map { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .trade-card .paper-mini-map span { font-size: .82rem; }
+  `;
+  document.head.appendChild(cleanupStyle);
+  const paperStyle = document.createElement("style");
+  paperStyle.textContent = `
+    .tp-profile-grid, .paper-mini-map { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+    .tp-profile, .paper-mini-map span { display: grid; gap: 3px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.025); color: var(--muted); }
+    .tp-profile strong { color: var(--text); }
+    .tp-profile b, .paper-mini-map b { color: #21d19f; }
+    .paper-mini-map span.hit { border-color: rgba(33,209,159,.55); background: rgba(33,209,159,.10); color: var(--text); }
+    .paper-cancel { margin-top: 12px; width: fit-content; }
+    .paper-positive { color: #21d19f; font-weight: 800; }
+    .paper-negative { color: #ff8b97; font-weight: 800; }
+    .paper-price-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+    .paper-price-row > span { display: inline-flex; gap: 5px; align-items: center; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; background: rgba(255,255,255,.025); color: var(--muted); }
+    .paper-price-row strong { color: var(--text); }
+    .paper-price-row .paper-positive { color: #21d19f; border-color: rgba(33,209,159,.35); background: rgba(33,209,159,.10); }
+    .paper-price-row .paper-negative, .sl-chip { color: #ff8b97 !important; border-color: rgba(255,107,122,.38) !important; background: rgba(255,107,122,.10) !important; font-weight: 800; }
+    .paper-mini-map { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+    .paper-mini-map span { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; font-size: .82rem; }
+    .paper-mini-map em { font-style: normal; color: var(--muted); }
+    .paper-mini-map strong { color: var(--text); font-weight: 800; }
+    .coin-link { appearance: none; border: 0; padding: 0; margin: 0; background: transparent; color: var(--text); font: inherit; font-weight: 900; cursor: pointer; text-align: left; }
+    .coin-link:hover { color: #5aa8ff; text-decoration: underline; text-underline-offset: 3px; }
+    @media (max-width: 860px) { .tp-profile-grid, .paper-mini-map { grid-template-columns: 1fr; } }
+  `;
+  document.head.appendChild(paperStyle);
   const style = document.createElement("style");
   style.textContent = `
     .chart-wrap { position: relative; min-height: 420px; background: #0b0e10; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
@@ -1252,6 +1563,20 @@ window.addEventListener("DOMContentLoaded", () => {
     .entry-plan small, .move-chip { display: inline-flex; align-items: center; margin-left: 8px; padding: 2px 7px; border-radius: 999px; font-size: .72em; font-weight: 800; line-height: 1.4; border: 1px solid rgba(255,255,255,.12); }
     .move-chip.loss, .entry-plan small.loss { color: #ff8b97; background: rgba(255,107,122,.12); border-color: rgba(255,107,122,.35); }
     .move-chip.win, .entry-plan small.win { color: #21d19f; background: rgba(33,209,159,.12); border-color: rgba(33,209,159,.35); }
+    .tp-profile-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+    .tp-profile { display: grid; gap: 4px; padding: 9px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.025); }
+    .tp-profile strong { color: var(--text); font-size: .86rem; }
+    .tp-profile span { color: var(--muted); font-size: .78rem; }
+    .tp-profile b { color: #21d19f; font-weight: 800; }
+    .paper-cancel-btn { margin-top: 10px; width: fit-content; }
+    .panel > .paper-cancel-btn, section > .paper-cancel-btn { display: none !important; }
+    .paper-roi-chip { margin-top: 10px; width: fit-content; padding: 5px 9px; border-radius: 999px; font-weight: 800; border: 1px solid rgba(255,255,255,.12); }
+    .paper-roi-chip.win { color: #21d19f; background: rgba(33,209,159,.12); border-color: rgba(33,209,159,.35); }
+    .paper-roi-chip.loss { color: #ff8b97; background: rgba(255,107,122,.12); border-color: rgba(255,107,122,.35); }
+    .tp-map-hint { margin-top: 8px; color: var(--muted); font-size: .82rem; line-height: 1.45; }
+    .compact-chart { min-height: 330px; }
+    .compact-chart iframe { width: 100%; height: 360px; border: 0; display: block; }
+    @media (max-width: 820px) { .tp-profile-grid { grid-template-columns: 1fr; } }
   `;
   document.head.appendChild(style);
 
@@ -1259,17 +1584,458 @@ window.addEventListener("DOMContentLoaded", () => {
   cockpitV2AttachChartHover();
   cockpitV2RefreshChart();
   cockpitV2DecoratePercentLines();
-  cockpitV2DecorateEntryPlans();
   setInterval(() => {
-    cockpitV2RefreshChart();
     cockpitV2DecoratePercentLines();
-    cockpitV2DecorateEntryPlans();
   }, 15000);
 
   document.getElementById("refreshBtn")?.addEventListener("click", () => setTimeout(cockpitV2RefreshChart, 350));
-  document.getElementById("scanBtn")?.addEventListener("click", () => setTimeout(cockpitV2DecorateEntryPlans, 350));
   document.getElementById("styleSelect")?.addEventListener("change", () => setTimeout(cockpitV2RefreshChart, 350));
   document.getElementById("coinInput")?.addEventListener("change", () => setTimeout(cockpitV2RefreshChart, 350));
-  document.addEventListener("click", () => setTimeout(cockpitV2DecorateEntryPlans, 120));
   window.addEventListener("resize", () => setTimeout(cockpitV2RefreshChart, 150));
+});
+
+// Hard stop for older experimental DOM patchers that were causing duplicated
+// Paper buttons and malformed TP cards. The proper Paper UI is rendered above.
+function cockpitV2FinalPaperFix() {}
+function cockpitV2StablePaperEnhance() {}
+function cockpitV2StableSignalEnhance() {}
+function cockpitV2EnhancePaperCards() {}
+function cockpitV2EnhanceSignalPlans() {}
+function cockpitV2PaperTradeEnhancements() {}
+function cockpitV2DecorateEntryPlans() {}
+
+// Disable old experimental DOM patchers. Paper is now rendered directly in renderPaper().
+function cockpitV2FinalPaperFix() {}
+function cockpitV2StablePaperEnhance() {}
+function cockpitV2StableSignalEnhance() {}
+function cockpitV2EnhancePaperCards() {}
+function cockpitV2EnhanceSignalPlans() {}
+function cockpitV2PaperTradeEnhancements() {}
+function cockpitV2DecorateEntryPlans() {}
+
+// Paper/real trade usability layer.
+const COCKPIT_V2_DEFAULT_PAPER_LEVERAGE = 10;
+
+function cockpitV2FindStorageArray(predicate) {
+  const matches = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    try {
+      const value = JSON.parse(localStorage.getItem(key));
+      if (Array.isArray(value) && value.some(predicate)) matches.push({ key, value });
+    } catch (error) {
+      // ignore non-json storage entries
+    }
+  }
+  return matches;
+}
+
+function cockpitV2CancelPaperTrigger(pair, entry) {
+  let changed = false;
+  cockpitV2FindStorageArray((item) => item?.signal?.plan || item?.plan).forEach(({ key, value }) => {
+    const next = value.filter((item) => {
+      const signal = item.signal || item;
+      const plan = signal.plan || item.plan || {};
+      const itemPair = signal.pair || item.pair || "";
+      const itemEntry = Number(plan.entry || item.entry);
+      const looksWaiting = !item.openedAt && !item.entryTime && !item.closedAt && !item.exit;
+      const samePair = !pair || itemPair === pair;
+      const sameEntry = !Number.isFinite(entry) || Math.abs(itemEntry - entry) <= Math.max(0.00000001, itemEntry * 0.00001);
+      return !(looksWaiting && samePair && sameEntry);
+    });
+    if (next.length !== value.length) {
+      localStorage.setItem(key, JSON.stringify(next));
+      changed = true;
+    }
+  });
+  if (changed && typeof renderPaper === "function") renderPaper();
+}
+
+function cockpitV2ParsePlanFromCard(card) {
+  const text = card.textContent || "";
+  const pair = (text.match(/\b([A-Z0-9]{2,})USDT\b/) || [])[0] || "";
+  const side = /short/i.test(text) ? "short" : "long";
+  const labelValue = (label) => {
+    const match = text.match(new RegExp(`${label}\\s+([\\d,.]+)`, "i"));
+    return cockpitV2NumberFromText(match?.[1]);
+  };
+  let entry = labelValue("Entry");
+  let stop = labelValue("SL") || labelValue("Stop");
+  let tp1 = labelValue("TP\\s*1") || labelValue("TP");
+  let tp2 = labelValue("TP\\s*2");
+  const compact = text.match(/Entry\s+([\d,.]+)\s+\|\s+SL\s+([\d,.]+)\s+\|\s+TP\s+([\d,.]+)(?:\s*\/\s*([\d,.]+))?/i);
+  if (compact) {
+    entry = cockpitV2NumberFromText(compact[1]);
+    stop = cockpitV2NumberFromText(compact[2]);
+    tp1 = cockpitV2NumberFromText(compact[3]);
+    tp2 = cockpitV2NumberFromText(compact[4] || compact[3]);
+  }
+  return { pair, side, entry, stop, target1: tp1, target2: tp2 };
+}
+
+function cockpitV2PriceFromMove(entry, movePct, side) {
+  if (!Number.isFinite(entry)) return NaN;
+  return side === "short" ? entry * (1 - movePct / 100) : entry * (1 + movePct / 100);
+}
+
+function cockpitV2TpProfiles(plan) {
+  const base1 = Math.abs(sideMovePct(plan.entry, plan.target1, plan.side));
+  const base2 = Math.abs(sideMovePct(plan.entry, plan.target2, plan.side));
+  const profiles = [
+    ["Scalp", Math.max(0.25, base1 * 0.65), Math.max(0.45, base2 * 0.75)],
+    ["Intraday", Math.max(0.45, base1), Math.max(0.75, base2)],
+    ["Swing", Math.max(0.9, base1 * 1.8), Math.max(1.4, base2 * 2.4)]
+  ];
+  return profiles.map(([name, first, second]) => ({
+    name,
+    first,
+    second,
+    target1: cockpitV2PriceFromMove(plan.entry, first, plan.side),
+    target2: cockpitV2PriceFromMove(plan.entry, second, plan.side)
+  }));
+}
+
+function cockpitV2EnhanceSignalPlans(root = document) {
+  root.querySelectorAll(".entry-plan, article, .card").forEach((card) => {
+    const text = card.textContent || "";
+    if (!/Entry/i.test(text) || !/TP/i.test(text) || card.querySelector(".tp-profile-grid")) return;
+    const plan = cockpitV2ParsePlanFromCard(card);
+    if (!Number.isFinite(plan.entry) || !Number.isFinite(plan.target1)) return;
+    const box = document.createElement("div");
+    box.className = "tp-profile-grid";
+    box.innerHTML = cockpitV2TpProfiles(plan).map((profile) => `
+      <div class="tp-profile">
+        <strong>${profile.name}</strong>
+        <span>TP1 ${fmt(profile.target1)} <b>+${profile.first.toFixed(2)}%</b></span>
+        <span>TP2 ${fmt(profile.target2)} <b>+${profile.second.toFixed(2)}%</b></span>
+      </div>
+    `).join("");
+    card.append(box);
+  });
+}
+
+function cockpitV2EnhancePaperCards(root = document) {
+  root.querySelectorAll(".paper-card, article").forEach((card) => {
+    const text = card.textContent || "";
+    if (!/Waiting entry/i.test(text) && !/Entry/i.test(text)) return;
+    const plan = cockpitV2ParsePlanFromCard(card);
+
+    if (/Waiting entry/i.test(text) && !card.querySelector(".paper-cancel-btn")) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ghost paper-cancel-btn";
+      button.textContent = "Zavriet nenaplneny";
+      button.addEventListener("click", () => cockpitV2CancelPaperTrigger(plan.pair, plan.entry));
+      card.append(button);
+    }
+
+    if (/Last/i.test(text) && !card.querySelector(".paper-roi-chip")) {
+      const entry = cockpitV2NumberFromText((text.match(/Entry\s+([\d,.]+)/i) || [])[1]);
+      const last = cockpitV2NumberFromText((text.match(/Last\s+([\d,.]+)/i) || [])[1]);
+      const side = /short/i.test(text) ? "short" : "long";
+      const raw = sideMovePct(entry, last, side);
+      if (Number.isFinite(raw)) {
+        const chip = document.createElement("div");
+        chip.className = `paper-roi-chip ${raw >= 0 ? "win" : "loss"}`;
+        chip.textContent = `Pohyb ${pctText(raw)} | pri 10x ${pctText(raw * COCKPIT_V2_DEFAULT_PAPER_LEVERAGE)}`;
+        card.append(chip);
+      }
+    }
+
+    if (/Entry/i.test(text) && /SL/i.test(text) && !card.querySelector(".tp-map-hint")) {
+      const hint = document.createElement("div");
+      hint.className = "tp-map-hint";
+      hint.textContent = "Paper rezim sleduje TP mapu: TP1, TP2 a dalsie ciele su evidovane ako zasahy; obchod sa ma ukoncit az pri SL alebo poslednom TP.";
+      card.append(hint);
+    }
+  });
+}
+
+function cockpitV2EnsureTradeCharts() {
+  const source = document.getElementById("priceChartFrame");
+  if (!source) return;
+  if (document.querySelector(".trade-chart-paper") && document.querySelector(".trade-chart-real")) return;
+  [
+    ["paper", "Paper graf"],
+    ["real", "Real trades graf"]
+  ].forEach(([needle, title]) => {
+    const tab = Array.from(document.querySelectorAll("section, main > div, .tab-panel")).find((node) => {
+      const id = (node.id || "").toLowerCase();
+      const text = (node.querySelector("h2, h1")?.textContent || "").toLowerCase();
+      return id.includes(needle) || text.includes(needle === "paper" ? "paper" : "real");
+    });
+    if (!tab || tab.querySelector(`.trade-chart-${needle}`)) return;
+    const panel = document.createElement("section");
+    panel.className = `panel trade-chart-${needle}`;
+    panel.innerHTML = `
+      <div class="panel-heading">
+        <h2>${title}</h2>
+        <span>sledovany coin</span>
+      </div>
+      <div class="chart-wrap compact-chart">
+        <iframe title="${title}" loading="lazy"></iframe>
+      </div>
+    `;
+    tab.append(panel);
+  });
+}
+
+function cockpitV2SyncTradeCharts() {
+  const source = document.getElementById("priceChartFrame");
+  if (!source?.src) return;
+  document.querySelectorAll(".trade-chart-paper iframe, .trade-chart-real iframe").forEach((frame) => {
+    if (frame.src !== source.src) frame.src = source.src;
+  });
+}
+
+function cockpitV2PaperTradeEnhancements() {
+  cockpitV2EnhanceSignalPlans();
+  cockpitV2EnhancePaperCards();
+  cockpitV2EnsureTradeCharts();
+  cockpitV2SyncTradeCharts();
+}
+
+// Final stable Paper renderer helpers. These target only individual trade cards,
+// never the whole Paper column/panel.
+function cockpitV2PanelByHeading(label) {
+  return Array.from(document.querySelectorAll("section, .panel")).find((panel) => {
+    const heading = panel.querySelector("h1, h2, h3")?.textContent || "";
+    return heading.trim().toLowerCase() === label.toLowerCase();
+  });
+}
+
+function cockpitV2DirectTradeCards(panel) {
+  if (!panel) return [];
+  return Array.from(panel.querySelectorAll("article, .signal, .trade-card")).filter((card) => {
+    const text = card.textContent || "";
+    return /\b[A-Z0-9]{2,}USDT\b/.test(text) && !/Scalp\s+TP1|Intraday\s+TP1|Swing\s+TP1/i.test(text);
+  });
+}
+
+function cockpitV2StablePaperEnhance() {
+  document.querySelectorAll(".tp-profile-grid, .paper-cancel-btn, .paper-roi-chip, .tp-map-hint").forEach((node) => node.remove());
+
+  const triggerPanel = cockpitV2PanelByHeading("Paper Triggers");
+  cockpitV2DirectTradeCards(triggerPanel).forEach((card) => {
+    const text = card.textContent || "";
+    if (!/Waiting entry/i.test(text)) return;
+    const plan = cockpitV2ParsePlanFromCard(card);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ghost paper-cancel-btn";
+    button.textContent = "Zavriet nenaplneny";
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      cockpitV2CancelPaperTrigger(plan.pair, plan.entry);
+      card.remove();
+    });
+    card.append(button);
+  });
+
+  const tradePanel = cockpitV2PanelByHeading("Paper Trades");
+  cockpitV2DirectTradeCards(tradePanel).forEach((card) => {
+    const text = card.textContent || "";
+    if (!/Entry/i.test(text) || !/Last/i.test(text)) return;
+    const entry = cockpitV2NumberFromText((text.match(/Entry\s+([\d,.]+)/i) || [])[1]);
+    const last = cockpitV2NumberFromText((text.match(/Last\s+([\d,.]+)/i) || [])[1]);
+    const side = /short/i.test(text) ? "short" : "long";
+    const raw = sideMovePct(entry, last, side);
+    if (!Number.isFinite(raw)) return;
+    const chip = document.createElement("div");
+    chip.className = `paper-roi-chip ${raw >= 0 ? "win" : "loss"}`;
+    chip.textContent = `Pohyb ${pctText(raw)} | pri 10x ${pctText(raw * COCKPIT_V2_DEFAULT_PAPER_LEVERAGE)}`;
+    card.append(chip);
+  });
+}
+
+function cockpitV2StableSignalEnhance() {
+  document.querySelectorAll(".entry-plan, article, .card").forEach((card) => {
+    const text = card.textContent || "";
+    if (!/Long plan|Short plan/i.test(text) || !/Entry/i.test(text) || !/TP/i.test(text)) return;
+    if (/Paper Triggers|Paper Trades/i.test(card.closest("section, .panel")?.querySelector("h1, h2, h3")?.textContent || "")) return;
+    if (card.querySelector(".tp-profile-grid")) return;
+    const plan = cockpitV2ParsePlanFromCard(card);
+    if (!Number.isFinite(plan.entry) || !Number.isFinite(plan.target1)) return;
+    const box = document.createElement("div");
+    box.className = "tp-profile-grid";
+    box.innerHTML = cockpitV2TpProfiles(plan).map((profile) => `
+      <div class="tp-profile">
+        <strong>${profile.name}</strong>
+        <span>TP1 ${fmt(profile.target1)} <b>+${profile.first.toFixed(2)}%</b></span>
+        <span>TP2 ${fmt(profile.target2)} <b>+${profile.second.toFixed(2)}%</b></span>
+      </div>
+    `).join("");
+    card.append(box);
+  });
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  setTimeout(() => {
+    cockpitV2StablePaperEnhance();
+    cockpitV2StableSignalEnhance();
+  }, 250);
+  document.addEventListener("click", () => setTimeout(() => {
+    cockpitV2StablePaperEnhance();
+    cockpitV2StableSignalEnhance();
+  }, 220));
+  document.addEventListener("change", () => setTimeout(() => {
+    cockpitV2StablePaperEnhance();
+    cockpitV2StableSignalEnhance();
+  }, 220));
+});
+
+function cockpitV2WrapPaperCloseLogic() {
+  try {
+    if (typeof closePaperTrade !== "function" || closePaperTrade.__cockpitV2Wrapped) return;
+    const originalClosePaperTrade = closePaperTrade;
+    closePaperTrade = function cockpitV2ClosePaperTradeWrapper(trade, reason, price) {
+      const signal = trade?.signal || {};
+      const plan = signal.plan || {};
+      const side = signal.side || trade?.side || "long";
+      const closeReason = String(reason || "").toLowerCase();
+      const currentPrice = Number(price || trade?.lastPrice);
+      const tp2Hit = side === "short" ? currentPrice <= Number(plan.target2) : currentPrice >= Number(plan.target2);
+      const stopHit = side === "short" ? currentPrice >= Number(plan.stop) : currentPrice <= Number(plan.stop);
+      if ((closeReason.includes("tp1") || closeReason === "tp") && !tp2Hit && !stopHit) {
+        trade.tpHits = { ...(trade.tpHits || {}), tp1: true };
+        trade.statusNote = "TP1 zasiahnuty, paper trade bezi dalej na TP2 alebo SL.";
+        return trade;
+      }
+      return originalClosePaperTrade.apply(this, arguments);
+    };
+    closePaperTrade.__cockpitV2Wrapped = true;
+  } catch (error) {
+    // Some builds keep close logic private; the visual TP map still remains active.
+  }
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  cockpitV2WrapPaperCloseLogic();
+  cockpitV2PaperTradeEnhancements();
+  document.addEventListener("click", () => setTimeout(cockpitV2PaperTradeEnhancements, 180));
+  document.addEventListener("change", () => setTimeout(cockpitV2PaperTradeEnhancements, 180));
+});
+
+// Stabilized paper layer: keep enhancements out of the Paper section containers.
+function cockpitV2ClearLoosePaperEnhancements(root = document) {
+  root.querySelectorAll(".tp-profile-grid, .paper-cancel-btn, .paper-roi-chip, .tp-map-hint").forEach((node) => node.remove());
+}
+
+function cockpitV2LooksLikePlanCard(card) {
+  const text = card.textContent || "";
+  if (card.querySelector("h1, h2, h3")) return false;
+  if (/Paper Triggers|Paper Trades|Paper graf|Real Trades/i.test(text)) return false;
+  return /Long plan|Short plan/i.test(text) && /Entry/i.test(text) && /TP/i.test(text);
+}
+
+function cockpitV2EnhanceSignalPlans(root = document) {
+  root.querySelectorAll(".entry-plan, article, .card").forEach((card) => {
+    if (!cockpitV2LooksLikePlanCard(card) || card.querySelector(".tp-profile-grid")) return;
+    const plan = cockpitV2ParsePlanFromCard(card);
+    if (!Number.isFinite(plan.entry) || !Number.isFinite(plan.target1)) return;
+    const box = document.createElement("div");
+    box.className = "tp-profile-grid";
+    box.innerHTML = cockpitV2TpProfiles(plan).map((profile) => `
+      <div class="tp-profile">
+        <strong>${profile.name}</strong>
+        <span>TP1 ${fmt(profile.target1)} <b>+${profile.first.toFixed(2)}%</b></span>
+        <span>TP2 ${fmt(profile.target2)} <b>+${profile.second.toFixed(2)}%</b></span>
+      </div>
+    `).join("");
+    card.append(box);
+  });
+}
+
+function cockpitV2EnhancePaperCards() {
+  cockpitV2ClearLoosePaperEnhancements();
+}
+
+function cockpitV2PaperTradeEnhancements() {
+  cockpitV2EnhanceSignalPlans();
+  cockpitV2EnhancePaperCards();
+  cockpitV2EnsureTradeCharts();
+  cockpitV2SyncTradeCharts();
+}
+/* Paper stabilization override. Kept at the top by patch tooling, but executed after DOM is ready. */
+function cockpitV2FinalPaperFix() {
+  const panels = Array.from(document.querySelectorAll("section, .panel, [id]"));
+  const paperTriggers = panels.find((panel) => /paper triggers/i.test(panel.querySelector("h1,h2,h3")?.textContent || ""));
+  const paperTrades = panels.find((panel) => /paper trades/i.test(panel.querySelector("h1,h2,h3")?.textContent || ""));
+
+  const cardsIn = (panel) => {
+    if (!panel) return [];
+    return Array.from(panel.querySelectorAll("article, .card, .signal-card, .trade-card, div")).filter((card) => {
+      const text = card.textContent || "";
+      const isPanel = card === panel || /Paper Triggers|Paper Trades/i.test(card.querySelector("h1,h2,h3")?.textContent || "");
+      return !isPanel && /\b[A-Z0-9]{2,}USDT\b/.test(text) && (card.children.length || card.className);
+    });
+  };
+
+  [paperTriggers, paperTrades].forEach((panel) => {
+    if (!panel) return;
+    Array.from(panel.children).forEach((child) => {
+      if (child.matches?.(".paper-cancel-btn, .tp-profile-grid, .paper-roi-chip, .tp-map-hint")) child.remove();
+    });
+    panel.querySelectorAll(".tp-profile-grid, .tp-map-hint").forEach((node) => node.remove());
+  });
+
+  cardsIn(paperTriggers).forEach((card) => {
+    const text = card.textContent || "";
+    if (!/waiting/i.test(text)) return;
+    if (card.querySelector(".paper-cancel-btn")) return;
+    const pair = (text.match(/\b([A-Z0-9]{2,}USDT)\b/) || [])[1] || "";
+    const entry = cockpitV2NumberFromText((text.match(/Waiting entry\s+([\d,.]+)/i) || [])[1]);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ghost paper-cancel-btn";
+    button.textContent = "Zavriet nenaplneny";
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      cockpitV2CancelPaperTrigger(pair, entry);
+      card.remove();
+    });
+    card.append(button);
+  });
+
+  cardsIn(paperTrades).forEach((card) => {
+    const text = card.textContent || "";
+    if (!/Entry/i.test(text) || !/Last/i.test(text)) return;
+    const entry = cockpitV2NumberFromText((text.match(/Entry\s+([\d,.]+)/i) || [])[1]);
+    const last = cockpitV2NumberFromText((text.match(/Last\s+([\d,.]+)/i) || [])[1]);
+    const side = /short/i.test(text) ? "short" : "long";
+    const raw = sideMovePct(entry, last, side);
+    if (!Number.isFinite(raw)) return;
+    const chip = card.querySelector(".paper-roi-chip") || document.createElement("div");
+    chip.className = `paper-roi-chip ${raw >= 0 ? "win" : "loss"}`;
+    chip.textContent = `Pohyb ${pctText(raw)} | pri 10x ${pctText(raw * 10)}`;
+    if (!chip.parentElement) card.append(chip);
+  });
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  const style = document.createElement("style");
+  style.textContent = `
+    .panel > .paper-cancel-btn, section > .paper-cancel-btn,
+    .panel > .tp-profile-grid, section > .tp-profile-grid,
+    .panel > .tp-map-hint, section > .tp-map-hint { display: none !important; }
+    .paper-cancel-btn { margin-top: 10px; width: fit-content; }
+    .paper-roi-chip { margin-top: 10px; width: fit-content; padding: 5px 9px; border-radius: 999px; font-weight: 800; border: 1px solid rgba(255,255,255,.12); }
+    .paper-roi-chip.win { color: #21d19f; background: rgba(33,209,159,.12); border-color: rgba(33,209,159,.35); }
+    .paper-roi-chip.loss { color: #ff8b97; background: rgba(255,107,122,.12); border-color: rgba(255,107,122,.35); }
+  `;
+  document.head.appendChild(style);
+
+  let queued = false;
+  const run = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      cockpitV2FinalPaperFix();
+    });
+  };
+  setTimeout(run, 300);
+  document.addEventListener("click", () => setTimeout(run, 120));
+  document.addEventListener("change", () => setTimeout(run, 120));
+  new MutationObserver(run).observe(document.body, { childList: true, subtree: true });
 });
