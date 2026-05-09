@@ -78,6 +78,14 @@ function scannerSettings() {
   };
 }
 
+function scannerIntervalForStyle(style) {
+  return {
+    scalp: "15m",
+    intraday: "1h",
+    swing: "4h",
+  }[style] || "1h";
+}
+
 function setScannerStatus(state, title, text) {
   if (!ui.scannerStatus) return;
   ui.scannerStatus.className = `panel scanner-status ${state}`;
@@ -557,13 +565,15 @@ function updateScannerStatusComplete() {
 
 async function rebuildPipeline() {
   const mode = window.CockpitDataAdapter.getDataMode();
+  const settings = scannerSettings();
+  const scanInterval = scannerIntervalForStyle(settings.style);
   const liveUniverseSize = window.CockpitDataAdapter.DEFAULT_LIVE_UNIVERSE?.length || 20;
-  setScannerStatus("loading", "Scanning...", `Načítavam a vyhodnocujem ${mode === "live" ? `${liveUniverseSize} live Binance futures coinov` : "fallback universe"}.`);
+  setScannerStatus("loading", "Scanning...", `Načítavam a vyhodnocujem ${mode === "live" ? `${liveUniverseSize} live Binance futures coinov` : "fallback universe"} na ${scanInterval}.`);
   ui.selectedCoinChange.textContent = window.CockpitDataAdapter.getDataMode() === "live" ? "loading live..." : "mock";
   try {
     coinAnalyses = await window.CockpitDataAdapter.getCoinAnalyses({
       mode: window.CockpitDataAdapter.getDataMode(),
-      interval: "1h",
+      interval: scanInterval,
     });
   } catch (error) {
     coinAnalyses = window.CockpitCoinAnalysis.buildCoinAnalyses();
@@ -571,7 +581,6 @@ async function rebuildPipeline() {
     setScannerStatus("warn", "Live scan failed", "Live dáta sa nepodarilo načítať, appka použila fallback dáta.");
   }
   const regime = window.CockpitMarketRegime.mockMarketRegime;
-  const settings = scannerSettings();
   const scanned = window.CockpitScanner.runScannerFromAnalyses(coinAnalyses, regime, settings.style);
   candidates = settings.marketRegimeFilter ? window.CockpitRulesEngine.applyRulesToCandidates(scanned) : scanned;
   selectedCandidate = candidates.find((candidate) => candidate.pair === ui.selectedCoin.value) || candidates[0];
@@ -636,6 +645,10 @@ ui.scanRefreshButton?.addEventListener("click", () => {
 
 [ui.scannerStyle, ui.scannerDirection, ui.scannerMinQuality, ui.scannerMinEdge, ui.marketRegimeFilter].forEach((control) => {
   control?.addEventListener("change", () => {
+    if (control === ui.scannerStyle) {
+      rebuildPipeline();
+      return;
+    }
     renderMarketRegime();
     renderCandidates();
     renderSignalDetail(candidates[0]);

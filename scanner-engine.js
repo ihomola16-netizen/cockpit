@@ -54,41 +54,88 @@ function classifySetup(analysis) {
   return SetupType.NO_TRADE;
 }
 
-function scoreCoin(analysis, regime) {
+function styleProfile(style) {
+  return {
+    [TradeStyle.SCALP]: {
+      maxVwapAtr: 0.95,
+      softVwapAtr: 1.35,
+      volumeNeed: 1.25,
+      roomNeed: 0.9,
+      adxNeed: 14,
+      spreadLimit: 0.05,
+      weights: { coin: 0.22, setup: 0.26, trigger: 0.34, risk: 0.14, edge: 0.04 },
+    },
+    [TradeStyle.INTRADAY]: {
+      maxVwapAtr: 1.25,
+      softVwapAtr: 1.85,
+      volumeNeed: 1.05,
+      roomNeed: 1.5,
+      adxNeed: 18,
+      spreadLimit: 0.08,
+      weights: { coin: 0.34, setup: 0.28, trigger: 0.20, risk: 0.13, edge: 0.05 },
+    },
+    [TradeStyle.SWING]: {
+      maxVwapAtr: 1.8,
+      softVwapAtr: 2.4,
+      volumeNeed: 0.85,
+      roomNeed: 2.4,
+      adxNeed: 22,
+      spreadLimit: 0.12,
+      weights: { coin: 0.42, setup: 0.22, trigger: 0.10, risk: 0.16, edge: 0.10 },
+    },
+  }[style] || {
+    maxVwapAtr: 1.25,
+    softVwapAtr: 1.85,
+    volumeNeed: 1.05,
+    roomNeed: 1.5,
+    adxNeed: 18,
+    spreadLimit: 0.08,
+    weights: { coin: 0.34, setup: 0.28, trigger: 0.20, risk: 0.13, edge: 0.05 },
+  };
+}
+
+function scoreCoin(analysis, regime, style = TradeStyle.INTRADAY) {
+  const profile = styleProfile(style);
   const direction = analysis.directionBias === "short" ? Direction.SHORT : Direction.LONG;
   const room = direction === Direction.LONG ? analysis.roomLongAtr : analysis.roomShortAtr;
   const setupType = classifySetup(analysis);
   const coin = clampScore(
     38 +
     (analysis.emaAligned ? 14 : 0) +
-    (analysis.volumeRatio >= 1 ? 10 : -8) +
-    (analysis.adx >= 18 ? 8 : -4) +
+    (analysis.volumeRatio >= profile.volumeNeed ? 10 : -8) +
+    (analysis.adx >= profile.adxNeed ? 8 : -4) +
     (analysis.btcAligned ? 8 : -8) +
-    (room >= 1.5 ? 10 : -12) +
+    (room >= profile.roomNeed ? 10 : -12) +
     (Math.abs(analysis.funding) < 0.04 ? 5 : -6)
   );
   const setup = clampScore(
     35 +
     (setupType !== SetupType.NO_TRADE ? 22 : -12) +
-    (analysis.vwapDistanceAtr <= 1.2 ? 12 : analysis.vwapDistanceAtr <= 1.8 ? 2 : -18) +
-    (analysis.volumeRatio >= 1.2 ? 8 : 0) +
-    (room >= 2 ? 8 : 0)
+    (analysis.vwapDistanceAtr <= profile.maxVwapAtr ? 12 : analysis.vwapDistanceAtr <= profile.softVwapAtr ? 2 : -18) +
+    (analysis.volumeRatio >= profile.volumeNeed ? 8 : 0) +
+    (room >= profile.roomNeed * 1.25 ? 8 : 0)
   );
   const trigger = clampScore(
     20 +
-    (analysis.vwapDistanceAtr <= 0.8 ? 22 : analysis.vwapDistanceAtr <= 1.4 ? 10 : -8) +
-    (analysis.volumeRatio >= 1.2 ? 14 : 0) +
+    (analysis.vwapDistanceAtr <= profile.maxVwapAtr * 0.75 ? 22 : analysis.vwapDistanceAtr <= profile.maxVwapAtr ? 10 : -8) +
+    (analysis.volumeRatio >= profile.volumeNeed ? 14 : 0) +
     (analysis.btcAligned ? 10 : -8) +
     (setupType === SetupType.SQUEEZE_RISK ? -20 : 0)
   );
   const risk = clampScore(
     82 -
     Math.abs(analysis.funding) * 240 -
-    Math.max(0, analysis.spread - 0.04) * 260 -
-    Math.max(0, analysis.vwapDistanceAtr - 1.8) * 12
+    Math.max(0, analysis.spread - profile.spreadLimit) * 260 -
+    Math.max(0, analysis.vwapDistanceAtr - profile.softVwapAtr) * 12
   );
   const edge = clampScore(Math.abs(coin - 50) + (setupType !== SetupType.NO_TRADE ? 18 : 0));
-  const final = clampScore(coin * 0.36 + setup * 0.28 + trigger * 0.20 + risk * 0.12 + edge * 0.04);
+  const final = clampScore(
+    coin * profile.weights.coin +
+    setup * profile.weights.setup +
+    trigger * profile.weights.trigger +
+    risk * profile.weights.risk +
+    edge * profile.weights.edge
+  );
   const candidateShell = { direction, score: { final }, state: trigger >= 75 ? "triggered" : trigger >= 55 ? "armed" : trigger >= 35 ? "forming" : "watch" };
   const regimePenalty = window.CockpitMarketRegime.regimePenaltyForCandidate(regime, candidateShell);
   return { market: regime.score, coin, setup, trigger, risk, edge, conflictPenalty: 0, final: clampScore(final - regimePenalty) };
@@ -124,7 +171,7 @@ function reasonsAgainst(analysis) {
 function buildCandidateFromAnalysis(analysis, regime, style = TradeStyle.INTRADAY) {
   const direction = analysis.directionBias === "short" ? Direction.SHORT : Direction.LONG;
   const setupType = classifySetup(analysis);
-  const score = scoreCoin(analysis, regime);
+  const score = scoreCoin(analysis, regime, style);
   return createCandidate({
     pair: analysis.pair,
     direction,
@@ -182,6 +229,7 @@ window.CockpitScanner = {
   mockCoinUniverse,
   classifySetup,
   scoreCoin,
+  styleProfile,
   buildCandidateFromAnalysis,
   tradePlansFromAnalysis,
   runScannerFromAnalyses,
