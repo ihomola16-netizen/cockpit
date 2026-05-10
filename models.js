@@ -174,6 +174,13 @@ function createJournalEntry(input) {
     leveragedPct: input.leveragedPct,
     score: input.score,
     exitReason: input.exitReason,
+    tpHits: input.tpHits ?? [],
+    tpHitCount: input.tpHitCount ?? 0,
+    tpResultLabel: input.tpResultLabel ?? null,
+    tpResultPct: input.tpResultPct ?? null,
+    tpResultLeveragedPct: input.tpResultLeveragedPct ?? null,
+    hitTpBeforeExit: Boolean(input.hitTpBeforeExit),
+    countedAsWin: Boolean(input.countedAsWin),
     failureReason: input.failureReason ?? null,
     createdAt: input.createdAt ?? nowIso(),
   };

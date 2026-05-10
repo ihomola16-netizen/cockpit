@@ -11,7 +11,7 @@ const ui = {
   marketRegimeFilter: document.getElementById("marketRegimeFilter"),
   candidateUniverseLabel: document.getElementById("candidateUniverseLabel"),
   scannerStatus: document.getElementById("scannerStatus"),
-  clearPaperButton: document.getElementById("clearPaperButton"),
+  clearJournalButton: document.getElementById("clearJournalButton"),
   startPaperButton: document.getElementById("startPaperButton"),
   candidateTable: document.getElementById("candidateTable"),
   previewTitle: document.getElementById("previewTitle"),
@@ -116,6 +116,15 @@ function fmt(value, digits = 4) {
   return value.toLocaleString("en-US", { maximumFractionDigits: digits });
 }
 
+function parseNumber(value) {
+  const raw = String(value ?? "").trim();
+  const normalized = raw.includes(".")
+    ? raw.replace(/,/g, "")
+    : raw.replace(",", ".");
+  const parsed = Number(normalized.replace(/[^0-9.+-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
 function movePct(entry, price, direction) {
   if (!Number.isFinite(entry) || !Number.isFinite(price) || entry === 0) return NaN;
   return ((price - entry) / entry) * 100 * (direction === "long" ? 1 : -1);
@@ -129,6 +138,10 @@ function signedPct(value) {
 function plainPct(value) {
   if (!Number.isFinite(value)) return "-";
   return `${value.toFixed(2)}%`;
+}
+
+function hasStoredNumber(value) {
+  return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
 }
 
 function zoneText(zone, fallback) {
@@ -236,7 +249,7 @@ function renderCandidates() {
       <span title="Final score after risk/rules/market penalties">Final</span>
     </div>
     ${filtered.map((item) => `
-    <div class="candidate-row ${item.pair === "SOLUSDT" ? "active" : ""}" data-coin="${item.pair}">
+    <div class="candidate-row ${item.pair === selectedCandidate?.pair ? "active" : ""}" data-coin="${item.pair}">
       <strong>${item.pair}</strong>
       <span class="badge ${stateClass(item.state)}">${titleCase(item.state)}</span>
       <span>${item.setupType}</span>
@@ -423,12 +436,15 @@ function paperTradeCard(trade) {
     <article class="paper-trade-card ${isActive ? "active" : "waiting"}">
       <div class="panel-head">
         <h2>${trade.pair} ${trade.direction.toUpperCase()}</h2>
-        <span class="badge ${isActive ? "good" : "warn"}">${titleCase(trade.status)}</span>
+        <div class="trade-card-actions">
+          <span class="badge ${isActive ? "good" : "warn"}">${titleCase(trade.status)}</span>
+          <button class="secondary danger-button delete-paper-trade" type="button" data-trade="${trade.id}">Vymazať</button>
+        </div>
       </div>
       <p>${trade.setupType} | ${titleCase(trade.style)} | ${trade.triggerType}</p>
       <div class="paper-row">
         <span>Entry zone <b>${zoneText(trade.entryZone, shownEntry)}</b></span>
-        <span>Mid <b>${fmt(shownEntry)}</b></span>
+        <span>Trigger entry <b>${fmt(shownEntry)}</b></span>
         <span>Live <b>${fmt(trade.live)}</b></span>
         <span class="${trade.leveragedPct >= 0 ? "positive" : "danger"}">${trade.leverage}x ${signedPct(trade.leveragedPct)}</span>
         <span class="danger">SL ${fmt(trade.stop)}</span>
@@ -449,10 +465,25 @@ function renderPaper() {
       ${state.waiting.map(paperTradeCard).join("")}
     </div>
   `;
+  ui.paperList.querySelectorAll(".delete-paper-trade").forEach((button) => {
+    button.addEventListener("click", () => deletePaperTrade(button.dataset.trade));
+  });
 }
 
 function paperState() {
   return window.CockpitStorage.loadPaperState() || window.CockpitPaperSimulator.emptyPaperState();
+}
+
+function deletePaperTrade(tradeId) {
+  const state = paperState();
+  const nextState = {
+    ...state,
+    waiting: state.waiting.filter((trade) => trade.id !== tradeId),
+    active: state.active.filter((trade) => trade.id !== tradeId),
+    closed: state.closed?.filter((trade) => trade.id !== tradeId) || [],
+  };
+  window.CockpitStorage.savePaperState(nextState);
+  renderPaper();
 }
 
 function startPaperFromSelected() {
@@ -495,6 +526,23 @@ function renderJournal() {
   const storedEntries = window.CockpitStorage.loadJournalEntries();
   if (storedEntries) state.entries = storedEntries;
   else window.CockpitStorage.saveJournalEntries([]);
+  const realEntries = window.CockpitStorage.loadRealJournalEntries() || [];
+  state.entries = state.entries.map((entry) => {
+    const tpHitCount = Number(entry.tpHitCount || 0);
+    const countedAsWin = entry.countedAsWin === true || tpHitCount > 0 || Number(entry.resultPct) > 0;
+      const tpResultPct = hasStoredNumber(entry.tpResultPct) ? Number(entry.tpResultPct) : NaN;
+      const tpResultLeveragedPct = hasStoredNumber(entry.tpResultLeveragedPct) ? Number(entry.tpResultLeveragedPct) : NaN;
+    return {
+      ...entry,
+      tpHits: entry.tpHits || [],
+      tpHitCount,
+      tpResultPct: Number.isFinite(tpResultPct) ? tpResultPct : null,
+      tpResultLeveragedPct: Number.isFinite(tpResultLeveragedPct) ? tpResultLeveragedPct : null,
+      hitTpBeforeExit: Boolean(entry.hitTpBeforeExit || tpHitCount > 0),
+      countedAsWin,
+      failurePattern: entry.failurePattern || window.CockpitJournalEngine.detectFailurePattern({ ...entry, tpHitCount, countedAsWin }),
+    };
+  });
   state.summary = window.CockpitJournalEngine.summarizeJournal(state.entries);
   state.bySetup = window.CockpitJournalEngine.groupStats(state.entries, "setupType");
   state.byStyle = window.CockpitJournalEngine.groupStats(state.entries, "style");
@@ -518,84 +566,275 @@ function renderJournal() {
     <p class="summary">Cieľ v3: journal bude spätne hovoriť, ktoré setupy, štýly a trigger typy majú zmysel držať.</p>
   `;
   ui.journalTable.innerHTML = `
-    <div class="journal-head"><span>Coin</span><span>Style</span><span>Setup</span><span>Entry</span><span>Exit</span><span>10x</span><span>Reason</span></div>
-    ${state.entries.map((entry) => `
+    <div class="panel-head"><h2>Paper Journal</h2><span>${state.entries.length} closed</span></div>
+    <div class="journal-head"><span>Coin</span><span>Side</span><span>Style</span><span>Setup</span><span>Entry</span><span>Exit</span><span>TP hit</span><span>10x</span><span>Result</span></div>
+    ${state.entries.map((entry) => {
+      const hitTp = Number(entry.tpHitCount || 0) > 0;
+      const hasTpResult = hitTp && hasStoredNumber(entry.tpResultLeveragedPct);
+      const displayLeveragedPct = hasTpResult ? Number(entry.tpResultLeveragedPct) : Number(entry.leveragedPct);
+      const displayTp = hitTp
+        ? `${entry.tpHits?.join(", ") || `${entry.tpHitCount}x TP`} pred exitom`
+        : "nie";
+      const resultLabel = hitTp && !hasTpResult
+        ? `${entry.tpHits?.at?.(-1) || "TP"} výsledok nedostupný`
+        : hasTpResult
+        ? `${entry.tpResultLabel || entry.tpHits?.at?.(-1) || "TP"} ${signedPct(displayLeveragedPct)}`
+        : `${entry.exitReason || "SL"} ${signedPct(displayLeveragedPct)}`;
+      return `
+        <div>
+          <span>${entry.pair}</span>
+          <span>${titleCase(entry.direction)}</span>
+          <span>${titleCase(entry.style)}</span>
+          <span>${entry.setupType}</span>
+          <span>${fmt(entry.entry)}</span>
+          <span>${fmt(entry.exit)}</span>
+          <span>${displayTp}</span>
+          <span class="${displayLeveragedPct >= 0 ? "positive" : "danger"}">${resultLabel}</span>
+          <span class="${entry.countedAsWin || hitTp || Number(entry.resultPct) > 0 ? "positive" : "danger"}">${entry.countedAsWin || hitTp || Number(entry.resultPct) > 0 ? "Win" : "Loss"} | ${entry.exitReason} | ${entry.failurePattern}</span>
+        </div>
+      `;
+    }).join("")}
+    <div class="panel-head journal-section-head"><h2>Real Trades Journal</h2><span>${realEntries.length} closed</span></div>
+    <div class="journal-head"><span>Coin</span><span>Side</span><span>Style</span><span>Setup</span><span>Entry</span><span>Exit</span><span>TP hit</span><span>10x</span><span>Result</span></div>
+    ${realEntries.map((entry) => `
       <div>
         <span>${entry.pair}</span>
+        <span>${titleCase(entry.direction)}</span>
         <span>${titleCase(entry.style)}</span>
-        <span>${entry.setupType}</span>
+        <span>Real manual</span>
         <span>${fmt(entry.entry)}</span>
         <span>${fmt(entry.exit)}</span>
+        <span>n/a</span>
         <span class="${entry.leveragedPct >= 0 ? "positive" : "danger"}">${signedPct(entry.leveragedPct)}</span>
-        <span>${entry.exitReason} | ${entry.failurePattern}</span>
+        <span class="${entry.resultPct >= 0 ? "positive" : "danger"}">${entry.resultPct >= 0 ? "Win" : "Loss"} | ${entry.exitReason} | PnL ${fmt(entry.pnl, 2)} USDT</span>
       </div>
     `).join("")}
   `;
 }
 
-function mockRealTrades() {
-  return [
-    createRealTrade({
-      pair: "SOLUSDT",
-      direction: Direction.LONG,
-      style: TradeStyle.INTRADAY,
-      entry: 142.2,
-      live: 143.1,
-      margin: 25,
-      leverage: 10,
-      stop: 140.8,
-      target: 146.1,
-      note: "Mock real trade monitoring.",
-    }),
-  ];
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
-function renderRealTrades() {
+function realTradeHealth(trade, analysis, resultPct) {
+  if (!analysis) {
+    return {
+      score: 0,
+      level: "warn",
+      label: "Čakám na dáta",
+      action: "Live analýza sa nepodarila načítať. Sleduj hlavne SL/TP podľa vlastného plánu.",
+      reasonsFor: [],
+      reasonsAgainst: ["Dáta pre filter nie sú dostupné"],
+    };
+  }
+  const direction = trade.direction;
+  const biasAligned = analysis.directionBias === direction;
+  const vwapAligned = direction === Direction.LONG ? analysis.aboveVwap : !analysis.aboveVwap;
+  const room = direction === Direction.LONG ? analysis.roomLongAtr : analysis.roomShortAtr;
+  const oiSupport = analysis.oiAvailable && analysis.oiLabel === "rising";
+  const fundingOk = Math.abs(Number(analysis.funding) || 0) < 0.04;
+  const stopProtectionPct = movePct(trade.entry, trade.stop, trade.direction);
+  const protectedStop = Number.isFinite(stopProtectionPct) && stopProtectionPct > 0;
+  const score = Math.round(clamp(
+    50 +
+    (biasAligned ? 18 : -18) +
+    (vwapAligned ? 14 : -14) +
+    (analysis.emaAligned && biasAligned ? 10 : -6) +
+    (analysis.volumeRatio >= 1 ? 8 : -7) +
+    (oiSupport ? 5 : analysis.oiLabel === "falling" ? -6 : 0) +
+    (room >= 1.2 ? 8 : -10) +
+    (fundingOk ? 4 : -6) -
+    Math.max(0, analysis.vwapDistanceAtr - 1.8) * 10 +
+    (protectedStop ? 8 : 0),
+    0,
+    100,
+  ));
+  const reasonsFor = [];
+  const reasonsAgainst = [];
+  if (biasAligned) reasonsFor.push("bias súhlasí so smerom"); else reasonsAgainst.push("bias ide proti obchodu");
+  if (vwapAligned) reasonsFor.push("VWAP drží smer"); else reasonsAgainst.push("cena je na zlej strane VWAP");
+  if (analysis.volumeRatio >= 1) reasonsFor.push(`volume ${fmt(analysis.volumeRatio, 2)}x`); else reasonsAgainst.push(`volume len ${fmt(analysis.volumeRatio, 2)}x`);
+  if (analysis.oiAvailable) reasonsFor.push(`OI ${analysis.oiLabel}${Number.isFinite(analysis.oiChange) ? ` ${signedPct(analysis.oiChange)}` : ""}`);
+  else reasonsAgainst.push("OI chýba");
+  if (room >= 1.2) reasonsFor.push(`room ${fmt(room, 2)} ATR`); else reasonsAgainst.push("málo priestoru k ďalšiemu levelu");
+  if (!fundingOk) reasonsAgainst.push("funding je crowded");
+  if (protectedStop) reasonsFor.push(`SL je v profite ${signedPct(stopProtectionPct)}`);
+
+  let level = score >= 72 ? "good" : score >= 50 ? "warn" : "bad";
+  let label = score >= 72 ? "Smer stále drží" : score >= 50 ? "Sledovať zblízka" : "Smer slabne";
+  let action = score >= 72
+    ? "Filter stále podporuje pôvodný smer. Drž plán, ale nenavyšuj bez nového triggeru."
+    : score >= 50
+      ? "Obchod má zmiešaný kontext. Pri zisku zvažuj partial, pri strate rešpektuj invalidáciu."
+      : "Pôvodný smer stráca podporu. Zváž zníženie rizika alebo zavretie podľa SL plánu.";
+
+  if (Number.isFinite(resultPct) && resultPct > 0.8 && score < 60) {
+    level = "warn";
+    label = "Profit, ale filter slabne";
+    action = "Zisk existuje, no smer už nie je čistý. Partial alebo posun SL dáva väčší zmysel než dúfať.";
+  }
+  if (Number.isFinite(resultPct) && resultPct < -0.7 && score < 55) {
+    level = "bad";
+    label = "Strata + slabý filter";
+    action = "Obchod je v strate a filter nepomáha. Nepridávať do pozície, riešiť invalidáciu.";
+  }
+  if (protectedStop && score >= 45) {
+    action = `${action} Stop je už v profite, takže riziko obchodu je nižšie než pri pôvodnom SL.`;
+  }
+
+  return { score, level, label, action, reasonsFor, reasonsAgainst };
+}
+
+async function analysisForRealTrade(trade) {
+  const interval = scannerIntervalForStyle(trade.style);
+  try {
+    return await window.CockpitDataAdapter.liveCoinAnalysis(trade.pair, interval);
+  } catch {
+    return coinAnalyses.find((analysis) => analysis.pair === trade.pair) || null;
+  }
+}
+
+function normalizeRealTrade(trade) {
+  return {
+    ...trade,
+    entry: parseNumber(trade.entry),
+    live: Number.isFinite(parseNumber(trade.live)) ? parseNumber(trade.live) : parseNumber(trade.entry),
+    margin: Number.isFinite(parseNumber(trade.margin)) ? parseNumber(trade.margin) : 10,
+    leverage: Number.isFinite(parseNumber(trade.leverage)) ? parseNumber(trade.leverage) : 10,
+    stop: parseNumber(trade.stop),
+    target: parseNumber(trade.target),
+    status: trade.status || RealTradeStatus.OPEN,
+  };
+}
+
+function realJournalEntryFromTrade(trade, exitPrice, exitReason = "Manual close") {
+  const normalized = normalizeRealTrade(trade);
+  const resultPct = movePct(normalized.entry, exitPrice, normalized.direction);
+  const leveragedPct = resultPct * normalized.leverage;
+  return {
+    id: `real-journal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    realTradeId: normalized.id,
+    pair: normalized.pair,
+    direction: normalized.direction,
+    style: normalized.style,
+    entry: normalized.entry,
+    exit: exitPrice,
+    resultPct,
+    leveragedPct,
+    pnl: normalized.margin * leveragedPct / 100,
+    margin: normalized.margin,
+    leverage: normalized.leverage,
+    stop: normalized.stop,
+    target: normalized.target,
+    exitReason,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+async function renderRealTrades() {
   const stored = window.CockpitStorage.loadRealTrades();
-  const trades = stored || [];
+  const trades = (stored || []).map(normalizeRealTrade).filter((trade) => trade.status === RealTradeStatus.OPEN);
   if (!stored) window.CockpitStorage.saveRealTrades([]);
+  else window.CockpitStorage.saveRealTrades(trades);
+  const cards = await Promise.all(trades.map(async (trade) => {
+    const analysis = await analysisForRealTrade(trade);
+    const live = Number.isFinite(trade.live) ? trade.live : analysis?.price ?? trade.entry;
+    const result = movePct(trade.entry, live, trade.direction);
+    const leveraged = result * trade.leverage;
+    const pnl = Number.isFinite(leveraged) ? trade.margin * leveraged / 100 : NaN;
+    const riskDistance = movePct(trade.entry, trade.stop, trade.direction);
+    const targetDistance = movePct(trade.entry, trade.target, trade.direction);
+    const stopFromLive = movePct(live, trade.stop, trade.direction);
+    const targetFromLive = movePct(live, trade.target, trade.direction);
+    const health = realTradeHealth(trade, analysis, result);
+    const badgeClass = health.level === "good" ? "good" : health.level === "bad" ? "bad" : "warn";
+    return `
+      <article class="paper-trade-card active real-trade-card" data-coin="${trade.pair}">
+        <div class="panel-head">
+          <h2>${trade.pair} ${trade.direction.toUpperCase()}</h2>
+          <div class="trade-card-actions">
+            <span class="badge ${badgeClass}">${health.score}/100</span>
+            <button class="secondary close-real-trade" type="button" data-trade="${trade.id}">Zavrieť</button>
+          </div>
+        </div>
+        <p>${titleCase(trade.style)} | ${trade.note || "Manual trade monitoring."}</p>
+        <div class="paper-row">
+          <span>Entry <b>${fmt(trade.entry)}</b></span>
+          <span>Live <b>${fmt(live)}</b></span>
+          <span class="${leveraged >= 0 ? "positive" : "danger"}">${trade.leverage}x <b>${signedPct(leveraged)}</b></span>
+          <span>PnL <b>${fmt(pnl, 2)} USDT</b></span>
+          <span class="danger">SL <b>${fmt(trade.stop)} ${signedPct(riskDistance)}</b></span>
+          <span>TP <b>${fmt(trade.target)} ${signedPct(targetDistance)}</b></span>
+        </div>
+        <div class="real-health-grid">
+          <div><span>Smer validita</span><strong class="${health.level === "bad" ? "danger" : health.level === "good" ? "positive" : ""}">${health.label}</strong></div>
+          <div><span>SL od live</span><strong class="danger">${signedPct(stopFromLive)}</strong></div>
+          <div><span>TP od live</span><strong class="positive">${signedPct(targetFromLive)}</strong></div>
+          <div><span>VWAP</span><strong>${analysis ? (analysis.aboveVwap ? "nad" : "pod") : "-"}</strong></div>
+          <div><span>Volume</span><strong>${analysis ? `${fmt(analysis.volumeRatio, 2)}x` : "-"}</strong></div>
+          <div><span>OI</span><strong>${analysis ? `${analysis.oiLabel}${Number.isFinite(analysis.oiChange) ? ` ${signedPct(analysis.oiChange)}` : ""}` : "-"}</strong></div>
+        </div>
+        <div class="real-edit-row">
+          <label>SL <input class="real-stop-input" data-trade="${trade.id}" value="${fmt(trade.stop)}"></label>
+          <label>TP <input class="real-target-input" data-trade="${trade.id}" value="${fmt(trade.target)}"></label>
+          <button class="secondary update-real-trade" type="button" data-trade="${trade.id}">Upraviť SL/TP</button>
+        </div>
+        <div class="reason-grid">
+          <div><strong>Za držanie</strong><span>${health.reasonsFor.join(", ") || "Bez jasného potvrdenia"}</span></div>
+          <div><strong>Proti držaniu</strong><span>${health.reasonsAgainst.join(", ") || "Bez veľkého varovania"}</span></div>
+        </div>
+        <p class="management-banner ${health.level}"><strong>${health.label}:</strong> ${health.action}</p>
+      </article>
+    `;
+  }));
   ui.realTradesList.innerHTML = `
     <div class="panel-head"><h2>Open Real Trades</h2><span>${trades.filter((trade) => trade.status === "open").length} open</span></div>
     <div class="paper-stack">
-      ${trades.map((trade) => {
-        const live = Number.isFinite(trade.live) ? trade.live : trade.entry;
-        const result = movePct(trade.entry, live, trade.direction);
-        const leveraged = result * trade.leverage;
-        const riskDistance = movePct(trade.entry, trade.stop, trade.direction);
-        const targetDistance = movePct(trade.entry, trade.target, trade.direction);
-        return `
-          <article class="paper-trade-card active">
-            <div class="panel-head"><h2>${trade.pair} ${trade.direction.toUpperCase()}</h2><span class="badge good">${titleCase(trade.status)}</span></div>
-            <p>${titleCase(trade.style)} | ${trade.note}</p>
-            <div class="paper-row">
-              <span>Entry <b>${fmt(trade.entry)}</b></span>
-              <span>Live <b>${fmt(live)}</b></span>
-              <span class="${leveraged >= 0 ? "positive" : "danger"}">${trade.leverage}x ${signedPct(leveraged)}</span>
-              <span class="danger">SL ${fmt(trade.stop)} ${signedPct(riskDistance)}</span>
-              <span>TP ${fmt(trade.target)} ${signedPct(targetDistance)}</span>
-            </div>
-            <p class="summary">Management: drž plán, partial až pri TP alebo pri zhoršení market režimu.</p>
-          </article>
-        `;
-      }).join("") || `<p class="muted">Žiadne real trades. Pridaj obchod manuálne cez formulár vyššie.</p>`}
+      ${cards.join("") || `<p class="muted">Žiadne real trades. Pridaj obchod manuálne cez formulár vyššie.</p>`}
     </div>
   `;
+  ui.realTradesList.querySelectorAll(".real-trade-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      ui.selectedCoin.value = card.dataset.coin;
+      window.CockpitStorage.saveSelectedCoin(card.dataset.coin);
+      syncCharts(card.dataset.coin);
+      renderSelectedCoinAnalysis(card.dataset.coin);
+    });
+  });
+  ui.realTradesList.querySelectorAll(".close-real-trade").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeRealTrade(button.dataset.trade);
+    });
+  });
+  ui.realTradesList.querySelectorAll(".update-real-trade").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      updateRealTradeLevels(button.dataset.trade);
+    });
+  });
+  ui.realTradesList.querySelectorAll(".real-stop-input, .real-target-input").forEach((input) => {
+    input.addEventListener("click", (event) => event.stopPropagation());
+  });
 }
 
 function addRealTrade() {
   const trades = window.CockpitStorage.loadRealTrades() || [];
   const pair = ui.realPair.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (!pair) return;
+  const entry = parseNumber(ui.realEntry.value);
+  const stop = parseNumber(ui.realStop.value);
+  const target = parseNumber(ui.realTarget.value);
+  if (!pair || !Number.isFinite(entry)) return;
   trades.unshift(createRealTrade({
     pair,
     direction: ui.realDirection.value,
     style: ui.realStyle.value,
-    entry: Number(ui.realEntry.value),
-    live: Number(ui.realEntry.value),
-    margin: Number(ui.realMargin.value) || 10,
-    leverage: Number(ui.realLeverage.value) || 10,
-    stop: Number(ui.realStop.value),
-    target: Number(ui.realTarget.value),
+    entry,
+    live: entry,
+    margin: parseNumber(ui.realMargin.value) || 10,
+    leverage: parseNumber(ui.realLeverage.value) || 10,
+    stop,
+    target,
     note: "Manual trade monitoring.",
   }));
   window.CockpitStorage.saveRealTrades(trades);
@@ -606,6 +845,36 @@ function addRealTrade() {
   renderSelectedCoinAnalysis(pair);
 }
 
+function updateRealTradeLevels(tradeId) {
+  const trades = (window.CockpitStorage.loadRealTrades() || []).map(normalizeRealTrade);
+  const card = ui.realTradesList.querySelector(`.update-real-trade[data-trade="${tradeId}"]`)?.closest(".real-trade-card");
+  const next = trades.map((trade) => {
+    if (trade.id !== tradeId) return trade;
+    const stop = parseNumber(card?.querySelector(".real-stop-input")?.value);
+    const target = parseNumber(card?.querySelector(".real-target-input")?.value);
+    return {
+      ...trade,
+      stop: Number.isFinite(stop) ? stop : trade.stop,
+      target: Number.isFinite(target) ? target : trade.target,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+  window.CockpitStorage.saveRealTrades(next);
+  renderRealTrades();
+}
+
+function closeRealTrade(tradeId) {
+  const trades = (window.CockpitStorage.loadRealTrades() || []).map(normalizeRealTrade);
+  const trade = trades.find((item) => item.id === tradeId);
+  if (!trade) return;
+  const exitPrice = Number.isFinite(trade.live) ? trade.live : trade.entry;
+  const realJournal = window.CockpitStorage.loadRealJournalEntries() || [];
+  window.CockpitStorage.saveRealJournalEntries([realJournalEntryFromTrade(trade, exitPrice), ...realJournal]);
+  window.CockpitStorage.saveRealTrades(trades.filter((item) => item.id !== tradeId));
+  renderRealTrades();
+  renderJournal();
+}
+
 async function updateRealTradesLive() {
   if (window.CockpitDataAdapter.getDataMode() !== "live") return;
   const trades = window.CockpitStorage.loadRealTrades();
@@ -613,7 +882,7 @@ async function updateRealTradesLive() {
   const openTrades = trades.filter((trade) => trade.status === "open");
   const results = await Promise.allSettled(openTrades.map(async (trade) => [trade.id, await window.CockpitDataAdapter.fetchPrice(trade.pair)]));
   const priceById = Object.fromEntries(results.filter((result) => result.status === "fulfilled").map((result) => result.value));
-  const next = trades.map((trade) => priceById[trade.id] ? { ...trade, live: priceById[trade.id] } : trade);
+  const next = trades.map((trade) => priceById[trade.id] ? { ...normalizeRealTrade(trade), live: priceById[trade.id] } : normalizeRealTrade(trade));
   window.CockpitStorage.saveRealTrades(next);
   renderRealTrades();
 }
@@ -767,14 +1036,10 @@ ui.scanRefreshButton?.addEventListener("click", () => {
   });
 });
 
-ui.clearPaperButton?.addEventListener("click", () => {
-  window.CockpitStorage.clearAllRuntimeStorage();
-  window.CockpitStorage.savePaperState(window.CockpitPaperSimulator.emptyPaperState());
+ui.clearJournalButton?.addEventListener("click", () => {
   window.CockpitStorage.saveJournalEntries([]);
-  window.CockpitStorage.saveRealTrades([]);
-  renderPaper();
+  window.CockpitStorage.saveRealJournalEntries([]);
   renderJournal();
-  renderRealTrades();
 });
 
 ui.startPaperButton?.addEventListener("click", startPaperFromSelected);

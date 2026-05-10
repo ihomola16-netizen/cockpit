@@ -1,9 +1,12 @@
 function summarizeJournal(entries) {
   const total = entries.length;
-  const wins = entries.filter((entry) => Number(entry.resultPct) > 0).length;
-  const losses = entries.filter((entry) => Number(entry.resultPct) <= 0).length;
-  const avgPct = total ? entries.reduce((sum, entry) => sum + Number(entry.resultPct || 0), 0) / total : 0;
-  const avgLeveragedPct = total ? entries.reduce((sum, entry) => sum + Number(entry.leveragedPct || 0), 0) / total : 0;
+  const wins = entries.filter((entry) => entry.countedAsWin === true || Number(entry.tpHitCount || 0) > 0 || Number(entry.resultPct) > 0).length;
+  const losses = entries.filter((entry) => !(entry.countedAsWin === true || Number(entry.tpHitCount || 0) > 0 || Number(entry.resultPct) > 0)).length;
+  const hasStoredNumber = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+  const displayResultPct = (entry) => Number(entry.tpHitCount || 0) > 0 && hasStoredNumber(entry.tpResultPct) ? Number(entry.tpResultPct) : Number(entry.resultPct || 0);
+  const displayLeveragedPct = (entry) => Number(entry.tpHitCount || 0) > 0 && hasStoredNumber(entry.tpResultLeveragedPct) ? Number(entry.tpResultLeveragedPct) : Number(entry.leveragedPct || 0);
+  const avgPct = total ? entries.reduce((sum, entry) => sum + displayResultPct(entry), 0) / total : 0;
+  const avgLeveragedPct = total ? entries.reduce((sum, entry) => sum + displayLeveragedPct(entry), 0) / total : 0;
   return {
     total,
     wins,
@@ -29,6 +32,7 @@ function groupStats(entries, key) {
 }
 
 function detectFailurePattern(entry) {
+  if (entry.exitReason === "SL" && (entry.hitTpBeforeExit || Number(entry.tpHitCount || 0) > 0)) return "SL po TP zásahu - počítané ako win";
   if (entry.exitReason === "SL" && entry.failureReason) return entry.failureReason;
   if (entry.exitReason === "SL") return "SL bez špecifikovaného dôvodu";
   if (Number(entry.resultPct) > 0) return "Validný výstup do profitu";

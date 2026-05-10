@@ -99,6 +99,12 @@ button, input, select {
   background: transparent;
 }
 
+.danger-button {
+  color: var(--red);
+  border-color: rgba(255,127,145,.35);
+  background: var(--red-bg);
+}
+
 .workspace {
   min-width: 0;
   padding: 18px;
@@ -450,11 +456,21 @@ small,
   margin-top: 12px;
 }
 
-.candidate-row,
+.candidate-row {
+  display: grid;
+  grid-template-columns: minmax(92px, 1fr) minmax(84px, .75fr) minmax(150px, 1.35fr) minmax(58px, .55fr) minmax(54px, .45fr) minmax(54px, .45fr) minmax(58px, .5fr);
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255,255,255,.02);
+}
+
 .journal-head,
 .journal-table > div {
   display: grid;
-  grid-template-columns: 1fr .85fr 1.25fr .7fr .7fr .7fr .7fr;
+  grid-template-columns: 1fr .65fr .75fr 1.15fr .7fr .7fr 1fr .7fr 1.35fr;
   gap: 8px;
   align-items: center;
   padding: 10px;
@@ -584,6 +600,20 @@ small,
   align-items: center;
 }
 
+.trade-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.trade-card-actions .secondary {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: .86rem;
+}
+
 .mini-checklist {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -656,6 +686,97 @@ small,
 .trade-form {
   display: grid;
   grid-template-columns: 1fr .75fr .85fr repeat(5, .75fr) auto;
+  align-items: end;
+}
+
+.trade-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+.trade-form button {
+  min-height: 34px;
+}
+
+.real-health-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.real-health-grid div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255,255,255,.025);
+}
+
+.real-health-grid span {
+  color: var(--muted);
+}
+
+.real-health-grid strong {
+  font-size: 1.15rem;
+}
+
+.real-edit-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.real-edit-row label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+.real-edit-row input {
+  min-height: 34px;
+  width: 100%;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #10151a;
+  padding: 0 10px;
+}
+
+.real-edit-row button {
+  min-height: 34px;
+}
+
+.management-banner {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: rgba(255,255,255,.025);
+}
+
+.management-banner.good {
+  color: var(--green);
+  border-color: rgba(32,214,163,.35);
+  background: var(--green-bg);
+}
+
+.management-banner.warn {
+  color: var(--yellow);
+  border-color: rgba(241,199,91,.35);
+  background: var(--yellow-bg);
+}
+
+.management-banner.bad {
+  color: var(--red);
+  border-color: rgba(255,127,145,.35);
+  background: var(--red-bg);
 }
 
 .journal-table {
@@ -690,6 +811,10 @@ small,
 .journal-head {
   color: var(--muted);
   font-weight: 900;
+}
+
+.journal-section-head {
+  margin-top: 14px;
 }
 
 .rules-grid {
@@ -744,6 +869,8 @@ small,
   .grid.two,
   .scanner-layout,
   .scanner-controls,
+  .real-health-grid,
+  .real-edit-row,
   .trade-form,
   .rules-grid {
     grid-template-columns: 1fr;

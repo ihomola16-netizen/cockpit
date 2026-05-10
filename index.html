@@ -222,7 +222,7 @@
       </section>
 
       <section class="view" data-panel="paper">
-        <div class="page-head"><div><span class="eyebrow">Simulation first</span><h1>Paper Trades</h1></div><button class="secondary" id="clearPaperButton">Clear paper / journal</button></div>
+        <div class="page-head"><div><span class="eyebrow">Simulation first</span><h1>Paper Trades</h1></div></div>
         <div class="grid two">
           <article class="panel" id="paperList"></article>
           <article class="panel chart-panel compact"><div class="panel-head"><h2>Paper Graf</h2><span id="paperChartMeta">SOLUSDT | 1h</span></div><div class="tv-frame-wrap small"><iframe id="paperChartFrame" title="Paper chart" loading="lazy"></iframe></div></article>
@@ -233,14 +233,14 @@
         <div class="page-head"><div><span class="eyebrow">Manual trade support</span><h1>Real Trades</h1></div></div>
         <article class="panel">
           <div class="trade-form">
-            <input id="realPair" value="SOLUSDT" aria-label="Pair">
-            <select id="realDirection" aria-label="Direction"><option value="long">Long</option><option value="short">Short</option></select>
-            <select id="realStyle" aria-label="Style"><option value="intraday">Intraday</option><option value="scalp">Scalp</option><option value="swing">Swing</option></select>
-            <input id="realEntry" value="142.20" aria-label="Entry">
-            <input id="realMargin" value="10" aria-label="Margin">
-            <input id="realLeverage" value="10" aria-label="Leverage">
-            <input id="realStop" value="140.80" aria-label="Stop">
-            <input id="realTarget" value="146.10" aria-label="Target">
+            <label><span>Coin</span><input id="realPair" value="SOLUSDT" aria-label="Pair"></label>
+            <label><span>Smer</span><select id="realDirection" aria-label="Direction"><option value="long">Long</option><option value="short">Short</option></select></label>
+            <label><span>Štýl</span><select id="realStyle" aria-label="Style"><option value="intraday">Intraday</option><option value="scalp">Scalp</option><option value="swing">Swing</option></select></label>
+            <label><span>Entry</span><input id="realEntry" value="142.20" aria-label="Entry"></label>
+            <label><span>Margin USDT</span><input id="realMargin" value="10" aria-label="Margin"></label>
+            <label><span>Páka</span><input id="realLeverage" value="10" aria-label="Leverage"></label>
+            <label><span>Stop loss</span><input id="realStop" value="140.80" aria-label="Stop"></label>
+            <label><span>Take profit</span><input id="realTarget" value="146.10" aria-label="Target"></label>
             <button class="primary" id="addRealTradeButton" type="button">Add</button>
           </div>
         </article>
@@ -251,7 +251,7 @@
       </section>
 
       <section class="view" data-panel="journal">
-        <div class="page-head"><div><span class="eyebrow">Feedback loop</span><h1>Journal</h1></div></div>
+        <div class="page-head"><div><span class="eyebrow">Feedback loop</span><h1>Journal</h1></div><button class="secondary danger-button" id="clearJournalButton" type="button">Vymazať journal</button></div>
         <div class="grid two">
           <article class="panel" id="journalSummary"></article>
           <article class="panel" id="journalFeedback"></article>

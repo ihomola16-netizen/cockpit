@@ -6,9 +6,24 @@ function planForStyle(candidate, style = candidate.style) {
   return candidate.tradePlans.find((plan) => plan.style === style) || candidate.tradePlans[0];
 }
 
+function lowestEntryFromZone(plan) {
+  if (plan?.entryZone && Number.isFinite(plan.entryZone.from) && Number.isFinite(plan.entryZone.to)) {
+    return Math.min(plan.entryZone.from, plan.entryZone.to);
+  }
+  return plan?.entry;
+}
+
+function lowestEntryFromTrade(trade, fallbackPlan) {
+  if (trade?.entryZone && Number.isFinite(trade.entryZone.from) && Number.isFinite(trade.entryZone.to)) {
+    return Math.min(trade.entryZone.from, trade.entryZone.to);
+  }
+  return lowestEntryFromZone(fallbackPlan) ?? trade?.plannedEntry;
+}
+
 function createPaperTradeFromTrigger(candidate, trigger, options = {}) {
   const plan = planForStyle(candidate, trigger.style);
   const shouldActivate = options.forceActive === true;
+  const plannedEntry = lowestEntryFromZone(plan);
   return createPaperTrade({
     candidateId: candidate.id,
     triggerId: trigger.id,
@@ -20,10 +35,10 @@ function createPaperTradeFromTrigger(candidate, trigger, options = {}) {
     triggerType: trigger.triggerType,
     margin: options.margin ?? 10,
     leverage: options.leverage ?? 10,
-    plannedEntry: plan.entry,
+    plannedEntry,
     entryZone: plan.entryZone ?? null,
-    entry: shouldActivate ? plan.entry : null,
-    live: shouldActivate ? options.live ?? plan.entry : null,
+    entry: shouldActivate ? plannedEntry : null,
+    live: shouldActivate ? options.live ?? plannedEntry : null,
     stop: plan.stop,
     targets: cloneTargets(plan),
     openedAt: shouldActivate ? nowIso() : null,
@@ -65,6 +80,13 @@ function updatePaperTradeSnapshot(trade, livePrice) {
 }
 
 function journalFromPaperTrade(trade, candidate) {
+  const hitTargets = trade.targets?.filter((target) => target.hit) || [];
+  const tpHits = hitTargets.map((target) => target.label);
+  const bestHitTarget = hitTargets.at(-1);
+  const tpResultPct = bestHitTarget ? priceMovePct(trade.entry, bestHitTarget.price, trade.direction) : null;
+  const tpResultLeveragedPct = Number.isFinite(tpResultPct) ? tpResultPct * trade.leverage : null;
+  const hitTpBeforeExit = tpHits.length > 0;
+  const countedAsWin = hitTpBeforeExit || Number(trade.resultPct) > 0;
   return createJournalEntry({
     paperTradeId: trade.id,
     pair: trade.pair,
@@ -79,7 +101,14 @@ function journalFromPaperTrade(trade, candidate) {
     leveragedPct: trade.leveragedPct,
     score: candidate?.score?.final ?? null,
     exitReason: trade.exitReason ?? trade.status,
-    failureReason: trade.status === PaperTradeStatus.STOPPED ? "Trigger zlyhal alebo trh zmenil režim" : null,
+    tpHits,
+    tpHitCount: tpHits.length,
+    tpResultLabel: bestHitTarget?.label ?? null,
+    tpResultPct,
+    tpResultLeveragedPct,
+    hitTpBeforeExit,
+    countedAsWin,
+    failureReason: trade.status === PaperTradeStatus.STOPPED && !hitTpBeforeExit ? "Trigger zlyhal alebo trh zmenil režim" : null,
   });
 }
 
@@ -126,22 +155,18 @@ function addPaperFromCandidate(state, candidate, trigger, options = {}) {
 
 function shouldTriggerTrade(trade, price) {
   if (!Number.isFinite(price)) return false;
-  if (trade.entryZone && Number.isFinite(trade.entryZone.from) && Number.isFinite(trade.entryZone.to)) {
-    const from = Math.min(trade.entryZone.from, trade.entryZone.to);
-    const to = Math.max(trade.entryZone.from, trade.entryZone.to);
-    return price >= from && price <= to;
-  }
   const plannedEntry = trade.plannedEntry;
   if (!Number.isFinite(plannedEntry)) return false;
   return trade.direction === Direction.LONG ? price <= plannedEntry : price >= plannedEntry;
 }
 
-function activateWaitingTrade(trade, price) {
+function activateWaitingTrade(trade, livePrice) {
+  const entry = Number.isFinite(trade.plannedEntry) ? trade.plannedEntry : livePrice;
   return {
     ...trade,
     status: PaperTradeStatus.ACTIVE,
-    entry: price,
-    live: price,
+    entry,
+    live: livePrice,
     openedAt: nowIso(),
   };
 }
@@ -156,7 +181,8 @@ function updatePaperStateWithPrices(state, priceMap, candidates = []) {
   current.waiting.forEach((trade) => {
     const price = priceMap[trade.pair];
     const plan = planForStyle(candidates.find((candidate) => candidate.id === trade.candidateId) || { tradePlans: [] }, trade.style);
-    const hydrated = Number.isFinite(trade.plannedEntry) ? trade : { ...trade, plannedEntry: plan?.entry ?? trade.plannedEntry, entryZone: plan?.entryZone ?? trade.entryZone };
+    const plannedEntry = lowestEntryFromTrade(trade, plan);
+    const hydrated = { ...trade, plannedEntry, entryZone: trade.entryZone ?? plan?.entryZone ?? null };
     if (shouldTriggerTrade(hydrated, price)) nextActive.push(activateWaitingTrade(hydrated, price));
     else nextWaiting.push(hydrated);
   });
