@@ -47,6 +47,49 @@ async function fetchPrice(pair) {
   return Number(data.price);
 }
 
+async function fetchOpenInterestContext(pair, interval = "1h") {
+  const period = {
+    "1m": "5m",
+    "5m": "5m",
+    "15m": "15m",
+    "1h": "1h",
+    "4h": "4h",
+    "1d": "1d",
+  }[interval] || "1h";
+
+  try {
+    const rows = await fetchJson(`${BINANCE_FAPI}/futures/data/openInterestHist?symbol=${pair}&period=${period}&limit=6`);
+    const first = Number(rows[0]?.sumOpenInterest);
+    const last = Number(rows.at(-1)?.sumOpenInterest);
+    const change = first ? ((last - first) / first) * 100 : NaN;
+    return {
+      oiLabel: Number.isFinite(change) ? change > 1 ? "rising" : change < -1 ? "falling" : "neutral" : "unknown",
+      oiChange: Number.isFinite(change) ? change : NaN,
+      oiPeriod: period,
+      oiAvailable: Number.isFinite(change),
+    };
+  } catch {
+    try {
+      const current = await fetchJson(`${BINANCE_FAPI}/fapi/v1/openInterest?symbol=${pair}`);
+      const value = Number(current.openInterest);
+      return {
+        oiLabel: Number.isFinite(value) ? "current only" : "unknown",
+        oiChange: NaN,
+        oiPeriod: period,
+        oiAvailable: Number.isFinite(value),
+        openInterest: value,
+      };
+    } catch {
+      return {
+        oiLabel: "unknown",
+        oiChange: NaN,
+        oiPeriod: period,
+        oiAvailable: false,
+      };
+    }
+  }
+}
+
 function average(values) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 }
@@ -59,6 +102,11 @@ function emaValue(values, period) {
     current = values[index] * k + current * (1 - k);
   }
   return current;
+}
+
+function smaValue(values, period) {
+  if (values.length < period) return NaN;
+  return average(values.slice(-period));
 }
 
 function atrValue(candles, period = 14) {
@@ -96,23 +144,43 @@ function rsiValue(values, period = 14) {
   return 100 - 100 / (1 + rs);
 }
 
+function swingLevels(candles, lookback = 120, pivot = 2) {
+  const slice = candles.slice(-lookback);
+  const highs = [];
+  const lows = [];
+  for (let index = pivot; index < slice.length - pivot; index += 1) {
+    const candle = slice[index];
+    const left = slice.slice(index - pivot, index);
+    const right = slice.slice(index + 1, index + pivot + 1);
+    if (left.every((item) => candle.high >= item.high) && right.every((item) => candle.high >= item.high)) highs.push(candle.high);
+    if (left.every((item) => candle.low <= item.low) && right.every((item) => candle.low <= item.low)) lows.push(candle.low);
+  }
+  return { highs, lows };
+}
+
 async function liveCoinAnalysis(pair, interval = "1h") {
-  const [candles, premium, ticker, book] = await Promise.all([
+  const [candles, premium, ticker, book, oi] = await Promise.all([
     fetchKlines(pair, interval),
     fetchJson(`${BINANCE_FAPI}/fapi/v1/premiumIndex?symbol=${pair}`).catch(() => ({ lastFundingRate: "0" })),
     fetchJson(`${BINANCE_FAPI}/fapi/v1/ticker/24hr?symbol=${pair}`).catch(() => ({ priceChangePercent: "0" })),
     fetchJson(`${BINANCE_FAPI}/fapi/v1/ticker/bookTicker?symbol=${pair}`).catch(() => ({ bidPrice: "0", askPrice: "0" })),
+    fetchOpenInterestContext(pair, interval),
   ]);
   const closes = candles.map((candle) => candle.close);
   const last = candles.at(-1);
   const ema20 = emaValue(closes, 20);
   const ema50 = emaValue(closes, 50);
   const ema200 = emaValue(closes, 200);
+  const ma7 = smaValue(closes, 7);
+  const ma25 = smaValue(closes, 25);
+  const ma99 = smaValue(closes, 99);
+  const ma200Sma = smaValue(closes, 200);
   const atr = atrValue(candles);
   const vwap = vwapValue(candles);
   const recent = candles.slice(-120);
   const support = Math.min(...recent.map((candle) => candle.low));
   const resistance = Math.max(...recent.map((candle) => candle.high));
+  const swings = swingLevels(candles);
   const bid = Number(book.bidPrice);
   const ask = Number(book.askPrice);
   const spread = bid && ask ? ((ask - bid) / ((ask + bid) / 2)) * 100 : 0.03;
@@ -127,6 +195,16 @@ async function liveCoinAnalysis(pair, interval = "1h") {
     price: last.close,
     directionBias,
     timeframe: interval,
+    atr,
+    vwap,
+    support,
+    resistance,
+    ma7,
+    ma25,
+    ma99,
+    ma200: ma200Sma,
+    swingHighs: swings.highs,
+    swingLows: swings.lows,
     aboveVwap: last.close >= vwap,
     vwapDistanceAtr: atr ? Math.abs(last.close - vwap) / atr : 0,
     emaAligned: directionBias === Direction.LONG ? ema20 > ema50 && ema50 > ema200 : ema20 < ema50 && ema50 < ema200,
@@ -135,8 +213,11 @@ async function liveCoinAnalysis(pair, interval = "1h") {
     adx: 22,
     atrPct: atr ? (atr / last.close) * 100 : 0,
     volumeRatio,
-    oiLabel: "unknown",
-    oiChange: 0,
+    oiLabel: oi.oiLabel,
+    oiChange: oi.oiChange,
+    oiPeriod: oi.oiPeriod,
+    oiAvailable: oi.oiAvailable,
+    openInterest: oi.openInterest,
     funding: Number(premium.lastFundingRate) * 100,
     spread,
     roomLongAtr,
@@ -163,6 +244,7 @@ window.CockpitDataAdapter = {
   getDataMode,
   fetchKlines,
   fetchPrice,
+  fetchOpenInterestContext,
   liveCoinAnalysis,
   getCoinAnalyses,
   DEFAULT_LIVE_UNIVERSE,

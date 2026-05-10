@@ -8,7 +8,7 @@ function planForStyle(candidate, style = candidate.style) {
 
 function createPaperTradeFromTrigger(candidate, trigger, options = {}) {
   const plan = planForStyle(candidate, trigger.style);
-  const shouldActivate = trigger.status === TriggerStatus.TRIGGERED || options.forceActive;
+  const shouldActivate = options.forceActive === true;
   return createPaperTrade({
     candidateId: candidate.id,
     triggerId: trigger.id,
@@ -21,6 +21,7 @@ function createPaperTradeFromTrigger(candidate, trigger, options = {}) {
     margin: options.margin ?? 10,
     leverage: options.leverage ?? 10,
     plannedEntry: plan.entry,
+    entryZone: plan.entryZone ?? null,
     entry: shouldActivate ? plan.entry : null,
     live: shouldActivate ? options.live ?? plan.entry : null,
     stop: plan.stop,
@@ -125,8 +126,12 @@ function addPaperFromCandidate(state, candidate, trigger, options = {}) {
 
 function shouldTriggerTrade(trade, price) {
   if (!Number.isFinite(price)) return false;
-  const planEntry = trade.entry;
-  const plannedEntry = Number.isFinite(planEntry) ? planEntry : trade.plannedEntry;
+  if (trade.entryZone && Number.isFinite(trade.entryZone.from) && Number.isFinite(trade.entryZone.to)) {
+    const from = Math.min(trade.entryZone.from, trade.entryZone.to);
+    const to = Math.max(trade.entryZone.from, trade.entryZone.to);
+    return price >= from && price <= to;
+  }
+  const plannedEntry = trade.plannedEntry;
   if (!Number.isFinite(plannedEntry)) return false;
   return trade.direction === Direction.LONG ? price <= plannedEntry : price >= plannedEntry;
 }
@@ -151,7 +156,7 @@ function updatePaperStateWithPrices(state, priceMap, candidates = []) {
   current.waiting.forEach((trade) => {
     const price = priceMap[trade.pair];
     const plan = planForStyle(candidates.find((candidate) => candidate.id === trade.candidateId) || { tradePlans: [] }, trade.style);
-    const hydrated = Number.isFinite(trade.entry) ? trade : { ...trade, entry: plan?.entry ?? trade.entry };
+    const hydrated = Number.isFinite(trade.plannedEntry) ? trade : { ...trade, plannedEntry: plan?.entry ?? trade.plannedEntry, entryZone: plan?.entryZone ?? trade.entryZone };
     if (shouldTriggerTrade(hydrated, price)) nextActive.push(activateWaitingTrade(hydrated, price));
     else nextWaiting.push(hydrated);
   });

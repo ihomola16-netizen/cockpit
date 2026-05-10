@@ -34,6 +34,12 @@ function triggerStatusFromChecklist(candidate, checklist) {
 }
 
 function entryZoneFromPlan(plan) {
+  if (plan.entryZone && Number.isFinite(plan.entryZone.from) && Number.isFinite(plan.entryZone.to)) {
+    return {
+      from: Math.min(plan.entryZone.from, plan.entryZone.to),
+      to: Math.max(plan.entryZone.from, plan.entryZone.to),
+    };
+  }
   const width = Math.abs(plan.entry - plan.stop) * 0.18;
   return {
     from: Math.min(plan.entry - width, plan.entry + width),
@@ -52,7 +58,7 @@ function createTriggerFromCandidate(candidate) {
     style: candidate.style,
     status,
     triggerType: triggerTypeForCandidate(candidate),
-    timeframe: candidate.style === TradeStyle.SCALP ? "5m" : candidate.style === TradeStyle.SWING ? "4h" : "15m",
+    timeframe: candidate.style === TradeStyle.SCALP ? "15m" : candidate.style === TradeStyle.SWING ? "4h" : "1h",
     checklist,
     entryZone: activePlan ? entryZoneFromPlan(activePlan) : null,
     invalidation: activePlan?.invalidation ?? "Setup prestal platiť.",

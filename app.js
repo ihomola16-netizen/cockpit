@@ -47,6 +47,9 @@ const ui = {
   btcStatus: document.getElementById("btcStatus"),
   ethStatus: document.getElementById("ethStatus"),
   marketStatus: document.getElementById("marketStatus"),
+  topLiveSymbol: document.getElementById("topLiveSymbol"),
+  topLivePrice: document.getElementById("topLivePrice"),
+  topLiveChange: document.getElementById("topLiveChange"),
   regimeBadge: document.getElementById("regimeBadge"),
   regimeScore: document.getElementById("regimeScore"),
   regimeAdvice: document.getElementById("regimeAdvice"),
@@ -123,6 +126,37 @@ function signedPct(value) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
+function plainPct(value) {
+  if (!Number.isFinite(value)) return "-";
+  return `${value.toFixed(2)}%`;
+}
+
+function zoneText(zone, fallback) {
+  if (!zone || !Number.isFinite(zone.from) || !Number.isFinite(zone.to)) return fmt(fallback);
+  if (Math.abs(zone.from - zone.to) < Math.abs(fallback || 1) * 0.00005) return fmt(fallback);
+  return `${fmt(zone.from)}-${fmt(zone.to)}`;
+}
+
+function zoneDistanceText(zone, price) {
+  if (!zone || !Number.isFinite(zone.from) || !Number.isFinite(zone.to) || !Number.isFinite(price)) return "-";
+  const from = Math.min(zone.from, zone.to);
+  const to = Math.max(zone.from, zone.to);
+  if (price >= from && price <= to) return "v entry zóne";
+  const nearest = price < from ? from : to;
+  const distance = ((price - nearest) / nearest) * 100;
+  return `${price > to ? "nad zónou" : "pod zónou"} ${signedPct(distance)}`;
+}
+
+function renderTopLivePrice(analysis) {
+  if (!analysis) return;
+  if (ui.topLiveSymbol) ui.topLiveSymbol.textContent = `${analysis.pair} live`;
+  if (ui.topLivePrice) ui.topLivePrice.textContent = fmt(analysis.price);
+  if (ui.topLiveChange) {
+    ui.topLiveChange.textContent = Number.isFinite(analysis.dayChange) ? `${signedPct(analysis.dayChange)} 1D` : "-";
+    ui.topLiveChange.className = Number(analysis.dayChange) >= 0 ? "positive" : "danger";
+  }
+}
+
 function chartUrl(pair = ui.selectedCoin.value, interval = "1h") {
   const tvInterval = interval === "15m" ? "15" : interval === "4h" ? "240" : "60";
   return `https://www.tradingview.com/widgetembed/?symbol=${encodeURIComponent(`BINANCE:${pair}.P`)}&interval=${tvInterval}&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=0f1113&studies=[]&theme=dark&style=1&timezone=Europe%2FBratislava&withdateranges=1&hideideas=1`;
@@ -164,7 +198,7 @@ function selectCandidate(candidate) {
   `;
   document.querySelector(".detail-preview .metric-list").innerHTML = `
     <span>VWAP <b>${candidate.metrics.aboveVwap ? "nad" : "pod"}</b></span>
-    <span>OI <b>${candidate.metrics.oiLabel}</b></span>
+    <span>OI <b>${candidate.metrics.oiLabel}${Number.isFinite(candidate.metrics.oiChange) ? ` ${signedPct(candidate.metrics.oiChange)}` : ""}</b></span>
     <span>Funding <b>${candidate.metrics.funding.toFixed(3)}%</b></span>
     <span>Volume <b>${candidate.metrics.volumeRatio.toFixed(1)}x</b></span>
     <span>ATR <b>${candidate.metrics.atrPct.toFixed(2)}%</b></span>
@@ -235,14 +269,25 @@ function checklistForCandidate(candidate) {
 
 function renderSignalDetail(candidate = selectedCandidate) {
   if (!candidate) return;
+  document.querySelector(".signal-watch-actions")?.remove();
+  const watched = window.CockpitStorage.loadWatchedTriggers();
+  const isWatched = watched.some((item) => item.candidate?.pair === candidate.pair && item.candidate?.style === candidate.style && item.candidate?.direction === candidate.direction);
+  const metrics = candidate.metrics || {};
+  const plan = candidate.tradePlans[0];
+  const livePrice = Number(metrics.price);
   ui.signalTitle.textContent = `${candidate.pair} ${candidate.direction.toUpperCase()}`;
-  ui.signalSubtitle.innerHTML = `${candidate.setupType} | ${titleCase(candidate.style)} | state: <b class="${candidate.state === "rejected" ? "danger" : "positive"}">${titleCase(candidate.state)}</b>`;
+  ui.signalSubtitle.innerHTML = `
+    ${candidate.setupType} | ${titleCase(candidate.style)} | ${candidate.timeframe}
+    | live <b>${fmt(livePrice)}</b>
+    | state <b class="${candidate.state === "rejected" ? "danger" : "positive"}">${titleCase(candidate.state)}</b>
+  `;
   ui.signalScores.innerHTML = `
-    <span>Quality <b>${candidate.score.coin}</b></span>
+    <span>Final <b>${candidate.score.final}</b></span>
+    <span>Coin <b>${candidate.score.coin}</b></span>
     <span>Setup <b>${candidate.score.setup}</b></span>
     <span>Trigger <b>${candidate.score.trigger}</b></span>
     <span>Risk <b>${candidate.score.risk}</b></span>
-    <span>Final <b>${candidate.score.final}</b></span>
+    <span>Edge <b>${candidate.score.edge}</b></span>
   `;
   ui.signalChecklist.innerHTML = checklistForCandidate(candidate).map((item) => `
     <li class="${item.status}">${item.label}</li>
@@ -250,20 +295,40 @@ function renderSignalDetail(candidate = selectedCandidate) {
   ui.signalReasons.innerHTML = `
     <div><strong>Za obchod</strong><span>${candidate.reasonsFor.join(", ") || "Bez silného potvrdenia"}</span></div>
     <div><strong>Riziká</strong><span>${candidate.reasonsAgainst.join(", ") || "Bez veľkého varovania"}</span></div>
+    <div><strong>Dáta</strong><span>Volume ${fmt(metrics.volumeRatio, 2)}x | OI ${metrics.oiLabel}${Number.isFinite(metrics.oiChange) ? ` ${signedPct(metrics.oiChange)}` : ""} | Funding ${plainPct(metrics.funding)} | ATR ${plainPct(metrics.atrPct)}</span></div>
+    <div><strong>Entry stav</strong><span>${plan ? `${zoneText(plan.entryZone, plan.entry)} | ${zoneDistanceText(plan.entryZone, livePrice)}` : "-"}</span></div>
   `;
+  ui.signalPlans.classList.toggle("single-plan", candidate.tradePlans.length === 1);
   ui.signalPlans.innerHTML = candidate.tradePlans.map((plan) => {
-    const tp1 = plan.targets[0];
-    const tp2 = plan.targets[1];
+    const targetLine = plan.targets.map((target) => `
+      <span>${target.label} <b>${fmt(target.price)}</b> <em>${signedPct(movePct(plan.entry, target.price, plan.direction))}</em></span>
+    `).join("");
     return `
       <div class="plan-card ${plan.style === candidate.style ? "active" : ""}">
-        <span>${titleCase(plan.style)}</span>
-        <strong>${plan.note}</strong>
-        <p>Entry ${fmt(plan.entry)} | SL ${fmt(plan.stop)} <b class="danger">${signedPct(movePct(plan.entry, plan.stop, plan.direction))}</b></p>
-        <p>${tp1.label} ${fmt(tp1.price)} <b class="positive">${signedPct(movePct(plan.entry, tp1.price, plan.direction))}</b> | ${tp2.label} ${fmt(tp2.price)} <b class="positive">${signedPct(movePct(plan.entry, tp2.price, plan.direction))}</b></p>
-        <small>${plan.invalidation}</small>
+        <div class="plan-card-head">
+          <span>${titleCase(plan.style)}</span>
+          <strong>${plan.scenario || plan.note}</strong>
+        </div>
+        <p>${plan.note}</p>
+        <div class="plan-detail-grid">
+          <span>Live <b>${fmt(livePrice)}</b></span>
+          <span>Entry zone <b>${zoneText(plan.entryZone, plan.entry)}</b></span>
+          <span>Zone status <b>${zoneDistanceText(plan.entryZone, livePrice)}</b></span>
+          <span>Mid <b>${fmt(plan.entry)}</b></span>
+          <span>SL <b class="danger">${fmt(plan.stop)} ${signedPct(movePct(plan.entry, plan.stop, plan.direction))}</b></span>
+          <span>Riziko <b>${plainPct(Math.abs(movePct(plan.entry, plan.stop, plan.direction)))}</b></span>
+        </div>
+        <div class="target-row">${targetLine}</div>
+        <small>Invalidácia: ${plan.invalidation}</small>
       </div>
     `;
   }).join("");
+  ui.signalPlans.insertAdjacentHTML("afterend", `
+    <div class="trade-actions signal-watch-actions">
+      <button id="watchTriggerButton" class="${isWatched ? "secondary" : "primary"}" type="button">${isWatched ? "Sledovaný trigger" : "Sledovať trigger"}</button>
+    </div>
+  `);
+  document.getElementById("watchTriggerButton")?.addEventListener("click", () => watchSelectedTrigger());
 }
 
 function triggerTone(status) {
@@ -277,16 +342,22 @@ function triggerTone(status) {
 }
 
 function renderTriggerBoard() {
-  const triggers = window.CockpitTriggerEngine.buildTriggerBoard(candidates);
+  const watched = window.CockpitStorage.loadWatchedTriggers();
+  const watchedCandidates = watched.map((item) => item.candidate).filter(Boolean);
+  const watchedTriggers = watched.map((item) => ({ ...item.trigger, watched: true }));
+  const dynamicTriggers = window.CockpitTriggerEngine.buildTriggerBoard(candidates)
+    .filter((trigger) => !watched.some((item) => item.candidate?.pair === trigger.pair && item.candidate?.style === trigger.style && item.candidate?.direction === trigger.direction));
+  const triggerCandidates = [...watchedCandidates, ...candidates];
+  const triggers = [...watchedTriggers, ...dynamicTriggers];
   ui.triggerList.innerHTML = triggers.map((trigger) => {
     const done = trigger.checklist.filter((item) => item.status === "done").length;
     const pending = trigger.checklist.filter((item) => item.status === "pending").length;
     const failed = trigger.checklist.filter((item) => item.status === "fail").length;
     const zone = trigger.entryZone ? `${fmt(trigger.entryZone.from)} - ${fmt(trigger.entryZone.to)}` : "-";
     return `
-      <div class="trigger-item" data-candidate="${trigger.candidateId}">
+      <div class="trigger-item ${trigger.watched ? "watched" : ""}" data-candidate="${trigger.candidateId}" data-watched="${trigger.watched ? "yes" : "no"}">
         <div class="trigger-top">
-          <strong>${trigger.pair} ${trigger.direction.toUpperCase()}</strong>
+          <strong>${trigger.pair} ${trigger.direction.toUpperCase()}${trigger.watched ? " · sledovaný" : ""}</strong>
           <span class="badge ${triggerTone(trigger.status)}">${titleCase(trigger.status)}</span>
         </div>
         <p>${trigger.triggerType} | ${titleCase(trigger.style)} | ${trigger.timeframe}</p>
@@ -299,19 +370,43 @@ function renderTriggerBoard() {
         <ul class="mini-checklist">
           ${trigger.checklist.map((item) => `<li class="${item.status}">${item.label}<small>${item.detail}</small></li>`).join("")}
         </ul>
+        ${trigger.watched ? `<button class="secondary unwatch-trigger" type="button" data-trigger="${trigger.id}">Zrušiť sledovanie</button>` : ""}
       </div>
     `;
   }).join("");
 
+  ui.triggerList.querySelectorAll(".unwatch-trigger").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const next = window.CockpitStorage.loadWatchedTriggers().filter((item) => item.trigger.id !== button.dataset.trigger);
+      window.CockpitStorage.saveWatchedTriggers(next);
+      renderTriggerBoard();
+      renderSignalDetail(selectedCandidate);
+    });
+  });
+
   ui.triggerList.querySelectorAll(".trigger-item").forEach((item) => {
     item.addEventListener("click", () => {
-      const candidate = candidates.find((candidateItem) => candidateItem.id === item.dataset.candidate);
+      const candidate = triggerCandidates.find((candidateItem) => candidateItem.id === item.dataset.candidate);
       if (candidate) {
         selectCandidate(candidate);
         setView("signal");
       }
     });
   });
+}
+
+function watchSelectedTrigger() {
+  if (!selectedCandidate) return;
+  const trigger = window.CockpitTriggerEngine.createTriggerFromCandidate(selectedCandidate);
+  const watched = window.CockpitStorage.loadWatchedTriggers();
+  const exists = watched.some((item) => item.candidate?.pair === selectedCandidate.pair && item.candidate?.style === selectedCandidate.style && item.candidate?.direction === selectedCandidate.direction);
+  const next = exists
+    ? watched
+    : [{ id: trigger.id, trigger, candidate: selectedCandidate, createdAt: new Date().toISOString() }, ...watched];
+  window.CockpitStorage.saveWatchedTriggers(next);
+  renderSignalDetail(selectedCandidate);
+  renderTriggerBoard();
 }
 
 function tpMapHtml(trade) {
@@ -332,7 +427,8 @@ function paperTradeCard(trade) {
       </div>
       <p>${trade.setupType} | ${titleCase(trade.style)} | ${trade.triggerType}</p>
       <div class="paper-row">
-        <span>Entry <b>${fmt(shownEntry)}</b></span>
+        <span>Entry zone <b>${zoneText(trade.entryZone, shownEntry)}</b></span>
+        <span>Mid <b>${fmt(shownEntry)}</b></span>
         <span>Live <b>${fmt(trade.live)}</b></span>
         <span class="${trade.leveragedPct >= 0 ? "positive" : "danger"}">${trade.leverage}x ${signedPct(trade.leveragedPct)}</span>
         <span class="danger">SL ${fmt(trade.stop)}</span>
@@ -522,6 +618,19 @@ async function updateRealTradesLive() {
   renderRealTrades();
 }
 
+async function updateSelectedCoinLivePrice() {
+  if (window.CockpitDataAdapter.getDataMode() !== "live") return;
+  const pair = ui.selectedCoin.value;
+  try {
+    const live = await window.CockpitDataAdapter.fetchPrice(pair);
+    const analysis = window.CockpitCoinAnalysis.selectedCoinAnalysis(pair, coinAnalyses);
+    renderTopLivePrice({ ...analysis, pair, price: live });
+    if (ui.selectedCoinPrice) ui.selectedCoinPrice.textContent = fmt(live);
+  } catch {
+    // keep last known value
+  }
+}
+
 function renderRules() {
   ui.rulesTable.innerHTML = `
     <div class="rules-head"><span>Rule</span><span>Value</span><span>Why it exists</span></div>
@@ -539,6 +648,7 @@ function renderSelectedCoinAnalysis(pair = ui.selectedCoin.value) {
   ui.selectedCoinChange.textContent = window.CockpitDataAdapter.getDataMode() === "live" ? "live" : "mock";
   const analysis = window.CockpitCoinAnalysis.selectedCoinAnalysis(pair, coinAnalyses);
   const summary = window.CockpitCoinAnalysis.coinAnalysisSummary(analysis);
+  renderTopLivePrice(analysis);
   ui.selectedCoinMeta.textContent = `${analysis.pair} | ${analysis.timeframe}`;
   ui.selectedCoinPrice.textContent = fmt(analysis.price);
   ui.selectedCoinChange.textContent = Number.isFinite(analysis.dayChange) ? `${signedPct(analysis.dayChange)} 1D` : ui.selectedCoinChange.textContent;
@@ -546,6 +656,7 @@ function renderSelectedCoinAnalysis(pair = ui.selectedCoin.value) {
     <span>Bias <b>${analysis.directionBias}</b></span>
     <span>VWAP <b>${analysis.aboveVwap ? "nad" : "pod"}</b></span>
     <span>Volume <b>${analysis.volumeRatio.toFixed(1)}x</b></span>
+    <span>OI <b>${analysis.oiLabel}${Number.isFinite(analysis.oiChange) ? ` ${signedPct(analysis.oiChange)}` : ""}</b></span>
     <span>Room <b>${analysis.normalized.room.toFixed(1)} ATR</b></span>
     <span>Risk <b>${Object.values(analysis.risks).join(" / ")}</b></span>
   `;
@@ -671,6 +782,7 @@ ui.addRealTradeButton?.addEventListener("click", addRealTrade);
 
 setInterval(updateLivePaperTracking, 7000);
 setInterval(updateRealTradesLive, 9000);
+setInterval(updateSelectedCoinLivePrice, 5000);
 
 renderMarketRegime();
 renderCandidates();

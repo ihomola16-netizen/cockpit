@@ -106,7 +106,7 @@ button, input, select {
 
 .topbar {
   display: grid;
-  grid-template-columns: repeat(3, minmax(150px, 1fr)) minmax(170px, 230px);
+  grid-template-columns: repeat(3, minmax(130px, 1fr)) minmax(140px, 180px) minmax(170px, 230px);
   gap: 10px;
   margin-bottom: 18px;
 }
@@ -138,6 +138,10 @@ button, input, select {
 
 .status-chip strong {
   font-size: .98rem;
+}
+
+.live-price-chip small {
+  font-weight: 800;
 }
 
 .status-chip.good { border-color: rgba(32,214,163,.36); }
@@ -281,6 +285,10 @@ h3 { font-size: 1.4rem; }
   margin-top: 14px;
 }
 
+.plan-grid.single-plan {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .mtf-grid div,
 .plan-card,
 .tp-map span,
@@ -292,6 +300,15 @@ h3 { font-size: 1.4rem; }
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel-2);
+}
+
+.trigger-item.watched {
+  border-color: rgba(90,169,255,.55);
+  background: rgba(90,169,255,.08);
+}
+
+.signal-watch-actions {
+  margin-top: 12px;
 }
 
 .mtf-grid strong {
@@ -505,6 +522,52 @@ small,
   background: var(--green-bg);
 }
 
+.plan-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plan-card-head span {
+  color: var(--muted);
+}
+
+.plan-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.plan-detail-grid span,
+.target-row span {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255,255,255,.025);
+  color: var(--muted);
+}
+
+.plan-detail-grid b,
+.target-row b {
+  color: var(--text);
+}
+
+.target-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.target-row em {
+  color: var(--green);
+  font-style: normal;
+  font-weight: 800;
+}
+
 .trigger-list {
   display: grid;
   gap: 10px;
@@ -692,6 +755,8 @@ small,
   .nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mtf-grid,
   .plan-grid,
+  .plan-detail-grid,
+  .target-row,
   .tp-map,
   .reason-grid {
     grid-template-columns: 1fr;

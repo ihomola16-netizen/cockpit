@@ -63,19 +63,26 @@ function createScoreBreakdown(values = {}) {
   };
 }
 
-function createTradePlan({ style, direction, entry, stop, target1, target2, invalidation, note }) {
+function createTradePlan({ style, direction, entry, entryFrom, entryTo, stop, target1, target2, target3, invalidation, note, scenario }) {
+  const targets = [
+    { id: uid("tp1"), label: "TP1", price: target1, hit: false },
+    { id: uid("tp2"), label: "TP2", price: target2, hit: false },
+  ];
+  if (Number.isFinite(target3)) targets.push({ id: uid("tp3"), label: "TP3", price: target3, hit: false });
   return {
     id: uid("plan"),
     style,
     direction,
     entry,
+    entryZone: {
+      from: Number.isFinite(entryFrom) ? entryFrom : entry,
+      to: Number.isFinite(entryTo) ? entryTo : entry,
+    },
     stop,
-    targets: [
-      { id: uid("tp1"), label: "TP1", price: target1, hit: false },
-      { id: uid("tp2"), label: "TP2", price: target2, hit: false },
-    ],
+    targets,
     invalidation,
     note,
+    scenario: scenario ?? note,
   };
 }
 
@@ -133,6 +140,7 @@ function createPaperTrade(input) {
     margin: input.margin ?? 10,
     leverage: input.leverage ?? 10,
     plannedEntry: input.plannedEntry ?? null,
+    entryZone: input.entryZone ?? null,
     entry: input.entry ?? null,
     live: input.live ?? null,
     stop: input.stop ?? null,
@@ -208,7 +216,7 @@ function mockTradePlans(pair, direction) {
       stop: base * (1 - sign * 0.006),
       target1: base * (1 + sign * 0.008),
       target2: base * (1 + sign * 0.013),
-      invalidation: "Strata 5m trigger sviečky.",
+      invalidation: "Strata 15m trigger sviečky.",
       note: "Rýchly výstup, nečakať swing reakciu.",
     }),
     createTradePlan({

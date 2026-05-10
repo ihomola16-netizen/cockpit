@@ -2,6 +2,7 @@ const StorageKeys = Object.freeze({
   selectedCoin: "cockpit-v3-selected-coin",
   dataMode: "cockpit-v3-data-mode",
   paperState: "cockpit-v3-paper-state",
+  watchedTriggers: "cockpit-v3-watched-triggers",
   journalEntries: "cockpit-v3-journal-entries",
   realTrades: "cockpit-v3-real-trades",
   rules: "cockpit-v3-rules",
@@ -52,6 +53,14 @@ function savePaperState(state) {
   writeStorage(StorageKeys.paperState, state);
 }
 
+function loadWatchedTriggers() {
+  return readStorage(StorageKeys.watchedTriggers, []);
+}
+
+function saveWatchedTriggers(items) {
+  writeStorage(StorageKeys.watchedTriggers, items);
+}
+
 function loadJournalEntries() {
   return readStorage(StorageKeys.journalEntries, null);
 }
@@ -67,6 +76,7 @@ function clearTradingStorage() {
 
 function clearAllRuntimeStorage() {
   removeStorage(StorageKeys.paperState);
+  removeStorage(StorageKeys.watchedTriggers);
   removeStorage(StorageKeys.journalEntries);
   removeStorage(StorageKeys.realTrades);
 }
@@ -89,6 +99,8 @@ window.CockpitStorage = {
   saveRules,
   loadPaperState,
   savePaperState,
+  loadWatchedTriggers,
+  saveWatchedTriggers,
   loadJournalEntries,
   saveJournalEntries,
   loadRealTrades,

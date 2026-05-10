@@ -30,6 +30,7 @@
         <div class="status-chip good" id="btcStatus"><span>BTC 1h/4h</span><strong>Bullish</strong></div>
         <div class="status-chip neutral" id="ethStatus"><span>ETH 1h/4h</span><strong>Mixed</strong></div>
         <div class="status-chip warn" id="marketStatus"><span>Market</span><strong>Risk On, selektívne</strong></div>
+        <div class="status-chip live-price-chip" id="topLivePriceChip"><span id="topLiveSymbol">SOLUSDT live</span><strong id="topLivePrice">-</strong><small id="topLiveChange">-</small></div>
         <label class="coin-picker">
           <span>Selected coin</span>
           <input id="selectedCoin" value="SOLUSDT" aria-label="Selected coin">
@@ -202,11 +203,9 @@
         </div>
 
         <article class="panel">
-          <div class="panel-head"><h2>Independent Trade Plans</h2><span>scalp / intraday / swing</span></div>
+          <div class="panel-head"><h2>Selected Trade Plan</h2><span>podľa zvoleného scanner štýlu</span></div>
           <div class="plan-grid" id="signalPlans">
-            <div class="plan-card"><span>Scalp</span><strong>Trigger close 5m</strong><p>Entry 142.20 | SL 141.35 | TP1 143.05 | TP2 143.60</p></div>
-            <div class="plan-card active"><span>Intraday</span><strong>VWAP reclaim</strong><p>Entry 142.20 | SL 140.80 | TP1 144.30 | TP2 146.10</p></div>
-            <div class="plan-card"><span>Swing</span><strong>4h structure</strong><p>Entry 141.50 | SL 136.80 | TP1 149.20 | TP2 156.40</p></div>
+            <div class="plan-card active"><span>Loading</span><strong>Čakám na scan</strong><p>Plán sa vyráta iba pre zvolený štýl v scanneri.</p></div>
           </div>
         </article>
       </section>
