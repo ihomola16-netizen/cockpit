@@ -227,14 +227,15 @@ function selectCandidate(candidate) {
 function renderCandidates() {
   const settings = scannerSettings();
   const filtered = candidates.filter((item) => {
+    const stateOk = item.state !== CandidateState.REJECTED;
     const directionOk = settings.direction === "both" || item.direction === settings.direction;
     const qualityOk = item.score.coin >= settings.minQuality;
     const edgeOk = item.score.edge >= settings.minEdge;
-    return directionOk && qualityOk && edgeOk;
+    return stateOk && directionOk && qualityOk && edgeOk;
   });
   ui.candidateUniverseLabel.textContent = window.CockpitDataAdapter.getDataMode() === "live"
-    ? `${filtered.length}/${coinAnalyses.length} live candidates`
-    : `${filtered.length}/${coinAnalyses.length} mock candidates`;
+    ? `${filtered.length}/${coinAnalyses.length} 2-step live candidates`
+    : `${filtered.length}/${coinAnalyses.length} 2-step mock candidates`;
   if (ui.scannerStatus && !ui.scannerStatus.classList.contains("loading")) {
     setScannerStatus("done", "Ready", `V universe je ${coinAnalyses.length} coinov, aktuálne zobrazené ${filtered.length} kandidátov.`);
   }
@@ -309,6 +310,7 @@ function renderSignalDetail(candidate = selectedCandidate) {
     <div><strong>Za obchod</strong><span>${candidate.reasonsFor.join(", ") || "Bez silného potvrdenia"}</span></div>
     <div><strong>Riziká</strong><span>${candidate.reasonsAgainst.join(", ") || "Bez veľkého varovania"}</span></div>
     <div><strong>Dáta</strong><span>Volume ${fmt(metrics.volumeRatio, 2)}x | OI ${metrics.oiLabel}${Number.isFinite(metrics.oiChange) ? ` ${signedPct(metrics.oiChange)}` : ""} | Funding ${plainPct(metrics.funding)} | ATR ${plainPct(metrics.atrPct)}</span></div>
+    <div><strong>Scan</strong><span>${metrics.stage1?.name || "Market Sweep"} ${metrics.stage1?.passedChecks ?? "-"}/${metrics.stage1?.totalChecks ?? "-"} | ${metrics.stage2?.name || "Setup Analysis"} ${metrics.stage2?.passedChecks ?? "-"}/${metrics.stage2?.totalChecks ?? "-"} | ${metrics.scanKey || "-"}</span></div>
     <div><strong>Entry stav</strong><span>${plan ? `${zoneText(plan.entryZone, plan.entry)} | ${zoneDistanceText(plan.entryZone, livePrice)}` : "-"}</span></div>
   `;
   ui.signalPlans.classList.toggle("single-plan", candidate.tradePlans.length === 1);
@@ -935,12 +937,13 @@ function renderSelectedCoinAnalysis(pair = ui.selectedCoin.value) {
 function updateScannerStatusComplete() {
   const settings = scannerSettings();
   const shown = candidates.filter((item) => {
+    const stateOk = item.state !== CandidateState.REJECTED;
     const directionOk = settings.direction === "both" || item.direction === settings.direction;
     const qualityOk = item.score.coin >= settings.minQuality;
     const edgeOk = item.score.edge >= settings.minEdge;
-    return directionOk && qualityOk && edgeOk;
+    return stateOk && directionOk && qualityOk && edgeOk;
   }).length;
-  setScannerStatus("done", "Scan complete", `Preskenované ${coinAnalyses.length} coinov, zobrazené ${shown} kandidátov po filtroch.`);
+  setScannerStatus("done", "2-step scan complete", `Market Sweep + Setup Analysis prebehli na ${coinAnalyses.length} coinoch, zobrazené ${shown} kandidátov.`);
 }
 
 async function rebuildPipeline() {
@@ -948,7 +951,7 @@ async function rebuildPipeline() {
   const settings = scannerSettings();
   const scanInterval = scannerIntervalForStyle(settings.style);
   const liveUniverseSize = window.CockpitDataAdapter.DEFAULT_LIVE_UNIVERSE?.length || 20;
-  setScannerStatus("loading", "Scanning...", `Načítavam a vyhodnocujem ${mode === "live" ? `${liveUniverseSize} live Binance futures coinov` : "fallback universe"} na ${scanInterval}.`);
+  setScannerStatus("loading", "Stage 1/2: Market Sweep", `Načítavam ${mode === "live" ? `${liveUniverseSize} live Binance futures coinov` : "fallback universe"} na ${scanInterval}. Potom pôjde Setup Analysis.`);
   ui.selectedCoinChange.textContent = window.CockpitDataAdapter.getDataMode() === "live" ? "loading live..." : "mock";
   try {
     coinAnalyses = await window.CockpitDataAdapter.getCoinAnalyses({

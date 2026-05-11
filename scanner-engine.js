@@ -57,39 +57,59 @@ function classifySetup(analysis) {
 function styleProfile(style) {
   return {
     [TradeStyle.SCALP]: {
+      label: "Scalp 15m",
+      key: "Likvidita, malý spread, cena pri VWAP/MA zóne, rýchly trigger. Žiadny chase.",
       maxVwapAtr: 0.95,
       softVwapAtr: 1.35,
       volumeNeed: 1.25,
       roomNeed: 0.9,
       adxNeed: 14,
       spreadLimit: 0.05,
+      atrRange: [0.25, 4.2],
+      stage1: { coin: 52, risk: 52, room: 0.75 },
+      stage2: { setup: 54, trigger: 38, final: 52 },
       weights: { coin: 0.22, setup: 0.26, trigger: 0.34, risk: 0.14, edge: 0.04 },
     },
     [TradeStyle.INTRADAY]: {
+      label: "Intraday 1h",
+      key: "1h štruktúra, pullback/retest do zóny, použiteľný room k levelu, potvrdený objem.",
       maxVwapAtr: 1.25,
       softVwapAtr: 1.85,
       volumeNeed: 1.05,
       roomNeed: 1.5,
       adxNeed: 18,
       spreadLimit: 0.08,
+      atrRange: [0.35, 7],
+      stage1: { coin: 55, risk: 50, room: 1.15 },
+      stage2: { setup: 55, trigger: 32, final: 54 },
       weights: { coin: 0.34, setup: 0.28, trigger: 0.20, risk: 0.13, edge: 0.05 },
     },
     [TradeStyle.SWING]: {
+      label: "Swing 4h",
+      key: "4h štruktúra, hlbšia zóna, väčší room, menší dôraz na okamžitý trigger.",
       maxVwapAtr: 1.8,
       softVwapAtr: 2.4,
       volumeNeed: 0.85,
       roomNeed: 2.4,
       adxNeed: 22,
       spreadLimit: 0.12,
+      atrRange: [0.45, 10],
+      stage1: { coin: 58, risk: 48, room: 1.7 },
+      stage2: { setup: 52, trigger: 24, final: 55 },
       weights: { coin: 0.42, setup: 0.22, trigger: 0.10, risk: 0.16, edge: 0.10 },
     },
   }[style] || {
+    label: "Intraday 1h",
+    key: "1h štruktúra, pullback/retest do zóny, použiteľný room k levelu, potvrdený objem.",
     maxVwapAtr: 1.25,
     softVwapAtr: 1.85,
     volumeNeed: 1.05,
     roomNeed: 1.5,
     adxNeed: 18,
     spreadLimit: 0.08,
+    atrRange: [0.35, 7],
+    stage1: { coin: 55, risk: 50, room: 1.15 },
+    stage2: { setup: 55, trigger: 32, final: 54 },
     weights: { coin: 0.34, setup: 0.28, trigger: 0.20, risk: 0.13, edge: 0.05 },
   };
 }
@@ -198,9 +218,129 @@ function buildCandidateFromAnalysis(analysis, regime, style = TradeStyle.INTRADA
     score,
     reasonsFor: reasonsFor(analysis, setupType),
     reasonsAgainst: reasonsAgainst(analysis),
-    metrics: analysis,
+    metrics: {
+      ...analysis,
+      scanKey: styleProfile(style).key,
+      stage1: null,
+      stage2: null,
+    },
     tradePlans: tradePlansFromAnalysis(analysis, direction, style),
   });
+}
+
+function stageOneMarketSweep(candidate, style = TradeStyle.INTRADAY) {
+  const profile = styleProfile(style);
+  const metrics = candidate.metrics || {};
+  const room = candidate.direction === Direction.LONG ? metrics.roomLongAtr : metrics.roomShortAtr;
+  const atrPct = Number(metrics.atrPct) || 0;
+  const checks = [
+    {
+      key: "coin",
+      pass: candidate.score.coin >= profile.stage1.coin,
+      detail: `coin ${candidate.score.coin}/${profile.stage1.coin}`,
+    },
+    {
+      key: "risk",
+      pass: candidate.score.risk >= profile.stage1.risk,
+      detail: `risk ${candidate.score.risk}/${profile.stage1.risk}`,
+    },
+    {
+      key: "spread",
+      pass: Number(metrics.spread || 0) <= profile.spreadLimit * 1.6,
+      detail: `spread ${(Number(metrics.spread || 0)).toFixed(3)}%`,
+    },
+    {
+      key: "atr",
+      pass: atrPct >= profile.atrRange[0] && atrPct <= profile.atrRange[1],
+      detail: `ATR ${atrPct.toFixed(2)}%`,
+    },
+    {
+      key: "room",
+      pass: Number(room) >= profile.stage1.room,
+      detail: `room ${Number(room || 0).toFixed(2)} ATR`,
+    },
+  ];
+  const passed = checks.filter((check) => check.pass).length;
+  return {
+    name: "Market Sweep",
+    passed: passed >= 4,
+    passedChecks: passed,
+    totalChecks: checks.length,
+    checks,
+  };
+}
+
+function stageTwoSetupAnalysis(candidate, style = TradeStyle.INTRADAY) {
+  const profile = styleProfile(style);
+  const metrics = candidate.metrics || {};
+  const noTradeSetup = [SetupType.NO_TRADE, SetupType.SQUEEZE_RISK].includes(candidate.setupType);
+  const plan = candidate.tradePlans?.[0];
+  const hasPlan = Boolean(plan && Number.isFinite(plan.entry) && Number.isFinite(plan.stop) && plan.targets?.length);
+  const checks = [
+    {
+      key: "scenario",
+      pass: !noTradeSetup,
+      detail: candidate.setupType,
+    },
+    {
+      key: "setup",
+      pass: candidate.score.setup >= profile.stage2.setup,
+      detail: `setup ${candidate.score.setup}/${profile.stage2.setup}`,
+    },
+    {
+      key: "trigger",
+      pass: candidate.score.trigger >= profile.stage2.trigger,
+      detail: `trigger ${candidate.score.trigger}/${profile.stage2.trigger}`,
+    },
+    {
+      key: "location",
+      pass: Number(metrics.vwapDistanceAtr || 0) <= profile.softVwapAtr,
+      detail: `${Number(metrics.vwapDistanceAtr || 0).toFixed(2)} ATR od VWAP`,
+    },
+    {
+      key: "plan",
+      pass: hasPlan,
+      detail: hasPlan ? plan.scenario || plan.note : "bez plánu",
+    },
+    {
+      key: "final",
+      pass: candidate.score.final >= profile.stage2.final,
+      detail: `final ${candidate.score.final}/${profile.stage2.final}`,
+    },
+  ];
+  const passed = checks.filter((check) => check.pass).length;
+  return {
+    name: "Setup Analysis",
+    passed: passed >= 5,
+    passedChecks: passed,
+    totalChecks: checks.length,
+    checks,
+  };
+}
+
+function enrichCandidateStages(candidate, style = TradeStyle.INTRADAY) {
+  const stage1 = stageOneMarketSweep(candidate, style);
+  const stage2 = stage1.passed ? stageTwoSetupAnalysis(candidate, style) : {
+    name: "Setup Analysis",
+    passed: false,
+    passedChecks: 0,
+    totalChecks: 6,
+    checks: [{ key: "blocked", pass: false, detail: "Neprešiel Market Sweep" }],
+  };
+  const next = {
+    ...candidate,
+    state: stage1.passed && stage2.passed ? candidate.state : CandidateState.REJECTED,
+    metrics: {
+      ...candidate.metrics,
+      stage1,
+      stage2,
+      scanKey: styleProfile(style).key,
+    },
+  };
+  if (!stage1.passed) next.reasonsAgainst = [...next.reasonsAgainst, "Neprešiel Market Sweep"];
+  if (stage1.passed && !stage2.passed) next.reasonsAgainst = [...next.reasonsAgainst, "Neprešiel Setup Analysis"];
+  if (stage1.passed && stage2.passed) next.reasonsFor = [...next.reasonsFor, "Prešiel 2-krokovým scanom"];
+  return next;
 }
 
 function tradePlansFromAnalysis(analysis, direction, style = TradeStyle.INTRADAY) {
@@ -381,6 +521,8 @@ function runMockScanner(regime = window.CockpitMarketRegime.mockMarketRegime, st
 function runScannerFromAnalyses(analyses, regime = window.CockpitMarketRegime.mockMarketRegime, style = TradeStyle.INTRADAY) {
   return analyses
     .map((analysis) => buildCandidateFromAnalysis(analysis, regime, style))
+    .map((candidate) => enrichCandidateStages(candidate, style))
+    .filter((candidate) => candidate.metrics.stage1?.passed && candidate.metrics.stage2?.passed)
     .sort((a, b) => b.score.final - a.score.final);
 }
 
@@ -390,6 +532,9 @@ window.CockpitScanner = {
   classifySetup,
   scoreCoin,
   styleProfile,
+  stageOneMarketSweep,
+  stageTwoSetupAnalysis,
+  enrichCandidateStages,
   buildCandidateFromAnalysis,
   tradePlansFromAnalysis,
   runScannerFromAnalyses,
