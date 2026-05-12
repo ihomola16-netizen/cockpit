@@ -444,10 +444,94 @@ small,
   color: var(--muted);
 }
 
+.scalp-playbook {
+  margin-bottom: 14px;
+}
+
+.playbook-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.playbook-grid > div {
+  min-height: 126px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255,255,255,.025);
+}
+
+.playbook-grid strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.playbook-grid p,
+.source-note {
+  color: var(--muted);
+}
+
+.source-note {
+  margin-top: 12px;
+  font-size: .9rem;
+}
+
 .scanner-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(320px, .65fr);
   gap: 14px;
+}
+
+.scalp-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, .95fr);
+  gap: 14px;
+}
+
+.scalp-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.scalp-card {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255,255,255,.02);
+  cursor: pointer;
+}
+
+.scalp-card.active {
+  border-color: rgba(32,214,163,.48);
+  background: rgba(32,214,163,.09);
+}
+
+.scalp-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.scalp-card p,
+.muted {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.scalp-detail .summary {
+  margin: 10px 0 12px;
+}
+
+.trade-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .candidate-table {
@@ -868,7 +952,9 @@ small,
   .topbar,
   .grid.two,
   .scanner-layout,
+  .scalp-layout,
   .scanner-controls,
+  .playbook-grid,
   .real-health-grid,
   .real-edit-row,
   .trade-form,

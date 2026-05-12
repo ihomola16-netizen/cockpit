@@ -11,6 +11,23 @@ const ui = {
   marketRegimeFilter: document.getElementById("marketRegimeFilter"),
   candidateUniverseLabel: document.getElementById("candidateUniverseLabel"),
   scannerStatus: document.getElementById("scannerStatus"),
+  scalpScanButton: document.getElementById("scalpScanButton"),
+  scalpDirection: document.getElementById("scalpDirection"),
+  scalpMinTrigger: document.getElementById("scalpMinTrigger"),
+  scalpMinQuality: document.getElementById("scalpMinQuality"),
+  scalpNearOnly: document.getElementById("scalpNearOnly"),
+  scalpStrictLong: document.getElementById("scalpStrictLong"),
+  scalpStatus: document.getElementById("scalpStatus"),
+  scalpUniverseLabel: document.getElementById("scalpUniverseLabel"),
+  scalpList: document.getElementById("scalpList"),
+  scalpDetailState: document.getElementById("scalpDetailState"),
+  scalpDetailTitle: document.getElementById("scalpDetailTitle"),
+  scalpDetailVerdict: document.getElementById("scalpDetailVerdict"),
+  scalpDetailMetrics: document.getElementById("scalpDetailMetrics"),
+  scalpDetailReasons: document.getElementById("scalpDetailReasons"),
+  scalpDetailPlan: document.getElementById("scalpDetailPlan"),
+  startScalpPaperButton: document.getElementById("startScalpPaperButton"),
+  openScalpSignalButton: document.getElementById("openScalpSignalButton"),
   clearJournalButton: document.getElementById("clearJournalButton"),
   startPaperButton: document.getElementById("startPaperButton"),
   candidateTable: document.getElementById("candidateTable"),
@@ -28,8 +45,10 @@ const ui = {
   mainChartFrame: document.getElementById("mainChartFrame"),
   paperChartFrame: document.getElementById("paperChartFrame"),
   realChartFrame: document.getElementById("realChartFrame"),
+  scalpChartFrame: document.getElementById("scalpChartFrame"),
   paperChartMeta: document.getElementById("paperChartMeta"),
   realChartMeta: document.getElementById("realChartMeta"),
+  scalpChartMeta: document.getElementById("scalpChartMeta"),
   realTradesList: document.getElementById("realTradesList"),
   realPair: document.getElementById("realPair"),
   realDirection: document.getElementById("realDirection"),
@@ -66,6 +85,9 @@ let candidates = window.CockpitRulesEngine.applyRulesToCandidates(
   window.CockpitScanner.runScannerFromAnalyses(coinAnalyses, window.CockpitMarketRegime.mockMarketRegime)
 );
 let selectedCandidate = candidates[0];
+let scalpAnalyses = [];
+let scalpCandidates = [];
+let selectedScalpCandidate = null;
 const appSettings = window.CockpitStorage.loadAppSettings();
 ui.selectedCoin.value = appSettings.selectedCoin;
 if (ui.dataMode) ui.dataMode.value = "live";
@@ -94,6 +116,23 @@ function setScannerStatus(state, title, text) {
   ui.scannerStatus.className = `panel scanner-status ${state}`;
   ui.scannerStatus.querySelector("strong").textContent = title;
   ui.scannerStatus.querySelector("p").textContent = text;
+}
+
+function setScalpStatus(state, title, text) {
+  if (!ui.scalpStatus) return;
+  ui.scalpStatus.className = `panel scanner-status ${state}`;
+  ui.scalpStatus.querySelector("strong").textContent = title;
+  ui.scalpStatus.querySelector("p").textContent = text;
+}
+
+function scalpSettings() {
+  return {
+    direction: ui.scalpDirection?.value || "both",
+    minTrigger: Number(ui.scalpMinTrigger?.value || 0),
+    minQuality: Number(ui.scalpMinQuality?.value || 0),
+    nearOnly: Boolean(ui.scalpNearOnly?.checked),
+    strictLong: Boolean(ui.scalpStrictLong?.checked),
+  };
 }
 
 function stateClass(state) {
@@ -188,8 +227,10 @@ function syncCharts(pair = ui.selectedCoin.value) {
   syncChartFrame(ui.mainChartFrame, pair);
   syncChartFrame(ui.paperChartFrame, pair);
   syncChartFrame(ui.realChartFrame, pair);
+  syncChartFrame(ui.scalpChartFrame, pair, "15m");
   if (ui.paperChartMeta) ui.paperChartMeta.textContent = `${pair} | 1h`;
   if (ui.realChartMeta) ui.realChartMeta.textContent = `${pair} | 1h`;
+  if (ui.scalpChartMeta) ui.scalpChartMeta.textContent = `${pair} | 15m`;
 }
 
 function setView(view) {
@@ -222,6 +263,145 @@ function selectCandidate(candidate) {
   });
   renderSignalDetail(candidate);
   renderSelectedCoinAnalysis(candidate.pair);
+}
+
+function scalpVerdict(candidate) {
+  const metrics = candidate.metrics || {};
+  const plan = candidate.tradePlans?.[0];
+  if (!plan) return "Bez použiteľného scalp plánu.";
+  if (candidate.setupType === "No trade") return "Watch only: coin má nejaký pohyb, ale zatiaľ nemá čistý scalp pattern. Neotvárať bez nového triggeru.";
+  const zoneStatus = zoneDistanceText(plan.entryZone, Number(metrics.price));
+  if (metrics.vwapDistanceAtr > 1.5) return "Chase risk: cena je už ďaleko od VWAP/MA zóny. Lepšie čakať na nový retest.";
+  if (candidate.direction === Direction.LONG && metrics.volumeRatio < 1.2) return "Long reclaim je slabší: volume zatiaľ nepotvrdzuje návrat nad VWAP.";
+  if (candidate.direction === Direction.SHORT && metrics.volumeRatio >= 0.8 && metrics.vwapDistanceAtr <= 1.35) return "Short reject je sledovateľný: čakaj odmietnutie zóny a rýchlu invalidáciu.";
+  if (zoneStatus === "v entry zóne") return "Ready zóna: cena je v plánovanej oblasti, rozhoduje trigger a reakcia objemu.";
+  return "Forming: setup je zaujímavý, ale zatiaľ čaká na návrat do scalp zóny.";
+}
+
+function scalpCandidatePasses(candidate, settings) {
+  const metrics = candidate.metrics || {};
+  const plan = candidate.tradePlans?.[0];
+  const directionOk = settings.direction === "both" || candidate.direction === settings.direction;
+  const qualityOk = candidate.score.coin >= settings.minQuality;
+  const triggerOk = candidate.score.trigger >= settings.minTrigger;
+  const setupOk = candidate.setupType !== "Squeeze risk";
+  const zoneOk = !settings.nearOnly || (plan && Number(metrics.vwapDistanceAtr || 0) <= 1.75);
+  const spreadOk = Number(metrics.spread || 0) <= 0.16;
+  const activeOk = Number(metrics.volumeRatio || 0) >= 0.35 && Number(metrics.atrPct || 0) >= 0.12;
+  const strictLongOk = !settings.strictLong || candidate.direction !== Direction.LONG || (
+    Number(metrics.volumeRatio || 0) >= 0.75 &&
+    Number(metrics.vwapDistanceAtr || 0) <= 1.35 &&
+    candidate.score.trigger >= Math.max(35, settings.minTrigger)
+  );
+  return directionOk && qualityOk && triggerOk && setupOk && zoneOk && spreadOk && activeOk && strictLongOk;
+}
+
+function scalpPlanHtml(candidate) {
+  const plan = candidate.tradePlans?.[0];
+  const livePrice = Number(candidate.metrics?.price);
+  if (!plan) return `<div class="plan-card"><strong>Bez plánu</strong><p>Pre tento scalp sa nepodarilo vytvoriť použiteľnú entry zónu.</p></div>`;
+  const targets = plan.targets.map((target) => `
+    <span>${target.label} <b>${fmt(target.price)}</b> <em>${signedPct(movePct(plan.entry, target.price, plan.direction))}</em></span>
+  `).join("");
+  return `
+    <div class="plan-card active">
+      <div class="plan-card-head">
+        <span>${titleCase(plan.style)}</span>
+        <strong>${plan.scenario || candidate.setupType}</strong>
+      </div>
+      <p>${plan.note}</p>
+      <div class="plan-detail-grid">
+        <span>Live <b>${fmt(livePrice)}</b></span>
+        <span>Entry zone <b>${zoneText(plan.entryZone, plan.entry)}</b></span>
+        <span>Zone status <b>${zoneDistanceText(plan.entryZone, livePrice)}</b></span>
+        <span>Trigger <b>${candidate.score.trigger}</b></span>
+        <span>SL <b class="danger">${fmt(plan.stop)} ${signedPct(movePct(plan.entry, plan.stop, plan.direction))}</b></span>
+        <span>Risk <b>${candidate.score.risk}</b></span>
+      </div>
+      <div class="target-row">${targets}</div>
+      <small>Invalidácia: ${plan.invalidation}</small>
+    </div>
+  `;
+}
+
+function selectScalpCandidate(candidate) {
+  selectedScalpCandidate = candidate;
+  selectedCandidate = candidate;
+  ui.selectedCoin.value = candidate.pair;
+  window.CockpitStorage.saveSelectedCoin(candidate.pair);
+  syncCharts(candidate.pair);
+  renderSelectedCoinAnalysis(candidate.pair);
+  renderSignalDetail(candidate);
+  const metrics = candidate.metrics || {};
+  ui.scalpDetailState.textContent = titleCase(candidate.state);
+  ui.scalpDetailTitle.textContent = `${candidate.pair} ${candidate.direction.toUpperCase()} | ${candidate.setupType}`;
+  ui.scalpDetailVerdict.textContent = scalpVerdict(candidate);
+  ui.scalpDetailMetrics.innerHTML = `
+    <span>Final <b>${candidate.score.final}</b></span>
+    <span>Coin <b>${candidate.score.coin}</b></span>
+    <span>Trigger <b>${candidate.score.trigger}</b></span>
+    <span>Risk <b>${candidate.score.risk}</b></span>
+    <span>Live <b>${fmt(metrics.price)}</b></span>
+    <span>VWAP <b>${metrics.aboveVwap ? "nad" : "pod"} / ${fmt(metrics.vwapDistanceAtr, 2)} ATR</b></span>
+    <span>Volume <b>${fmt(metrics.volumeRatio, 2)}x</b></span>
+    <span>Spread <b>${plainPct(metrics.spread)}</b></span>
+    <span>ATR <b>${plainPct(metrics.atrPct)}</b></span>
+    <span>BTC align <b>${metrics.btcAligned ? "yes" : "no"}</b></span>
+    <span>OI <b>${metrics.oiLabel}${Number.isFinite(metrics.oiChange) ? ` ${signedPct(metrics.oiChange)}` : ""}</b></span>
+    <span>Funding <b>${plainPct(metrics.funding)}</b></span>
+  `;
+  ui.scalpDetailReasons.innerHTML = `
+    <div><strong>Za scalp</strong><span>${candidate.reasonsFor.join(", ") || "Bez silného potvrdenia"}</span></div>
+    <div><strong>Riziká</strong><span>${candidate.reasonsAgainst.join(", ") || "Bez veľkého varovania"}</span></div>
+  `;
+  ui.scalpDetailPlan.innerHTML = scalpPlanHtml(candidate);
+  ui.scalpList.querySelectorAll(".scalp-card").forEach((card) => {
+    card.classList.toggle("active", card.dataset.id === candidate.id);
+  });
+}
+
+function renderScalpCandidates() {
+  if (!ui.scalpList) return;
+  const settings = scalpSettings();
+  const filtered = scalpCandidates.filter((candidate) => scalpCandidatePasses(candidate, settings));
+  ui.scalpUniverseLabel.textContent = `${filtered.length}/${scalpCandidates.length || scalpAnalyses.length} scalp candidates`;
+  if (!filtered.length) {
+    ui.scalpList.innerHTML = `<p class="muted">Žiadny čistý scalp setup. Skús znížiť filter alebo počkať na ďalší retest.</p>`;
+    return;
+  }
+  ui.scalpList.innerHTML = filtered.map((candidate) => {
+    const metrics = candidate.metrics || {};
+    const plan = candidate.tradePlans?.[0];
+    const zone = plan ? zoneText(plan.entryZone, plan.entry) : "-";
+    return `
+      <article class="scalp-card ${candidate.id === selectedScalpCandidate?.id ? "active" : ""}" data-id="${candidate.id}">
+        <div class="scalp-card-head">
+          <strong>${candidate.pair} ${candidate.direction.toUpperCase()}</strong>
+          <span class="badge ${stateClass(candidate.state)}">${titleCase(candidate.state)}</span>
+        </div>
+        <p>${candidate.setupType} | ${scalpVerdict(candidate)}</p>
+        <div class="metric-strip">
+          <span>Final <b>${candidate.score.final}</b></span>
+          <span>Coin <b>${candidate.score.coin}</b></span>
+          <span>Entry <b>${zone}</b></span>
+          <span>Live <b>${fmt(metrics.price)}</b></span>
+          <span>Trig <b>${candidate.score.trigger}</b></span>
+          <span>Risk <b>${candidate.score.risk}</b></span>
+          <span>Vol <b>${fmt(metrics.volumeRatio, 2)}x</b></span>
+          <span>VWAP <b>${fmt(metrics.vwapDistanceAtr, 2)} ATR</b></span>
+        </div>
+      </article>
+    `;
+  }).join("");
+  ui.scalpList.querySelectorAll(".scalp-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const candidate = filtered.find((item) => item.id === card.dataset.id);
+      if (candidate) selectScalpCandidate(candidate);
+    });
+  });
+  if (!selectedScalpCandidate || !filtered.some((candidate) => candidate.id === selectedScalpCandidate.id)) {
+    selectScalpCandidate(filtered[0]);
+  }
 }
 
 function renderCandidates() {
@@ -978,6 +1158,33 @@ async function rebuildPipeline() {
   updateScannerStatusComplete();
 }
 
+async function rebuildScalpPipeline() {
+  const mode = window.CockpitDataAdapter.getDataMode();
+  const universeSize = window.CockpitDataAdapter.DEFAULT_LIVE_UNIVERSE?.length || 50;
+  setScalpStatus("loading", "Scalp scan beží", `Načítavam ${mode === "live" ? `${universeSize} live Binance futures coinov` : "fallback universe"} na 15m a filtrujem iba scalp setupy.`);
+  try {
+    scalpAnalyses = await window.CockpitDataAdapter.getCoinAnalyses({
+      mode,
+      interval: "15m",
+    });
+  } catch {
+    scalpAnalyses = window.CockpitCoinAnalysis.buildCoinAnalyses();
+    setScalpStatus("warn", "Live scalp scan failed", "Live dáta sa nepodarilo načítať, appka použila fallback dáta.");
+  }
+  const regime = window.CockpitMarketRegime.mockMarketRegime;
+  scalpCandidates = scalpAnalyses
+    .map((analysis) => window.CockpitScanner.buildCandidateFromAnalysis(analysis, regime, TradeStyle.SCALP))
+    .sort((a, b) => {
+      const setupA = a.setupType === "No trade" ? 0 : 25;
+      const setupB = b.setupType === "No trade" ? 0 : 25;
+      return (b.score.trigger + setupB) - (a.score.trigger + setupA) || b.score.final - a.score.final;
+    });
+  selectedScalpCandidate = scalpCandidates.find((candidate) => candidate.pair === ui.selectedCoin.value) || scalpCandidates[0] || null;
+  renderScalpCandidates();
+  const shown = scalpCandidates.filter((candidate) => scalpCandidatePasses(candidate, scalpSettings())).length;
+  setScalpStatus("done", "Scalp scan complete", `Zobrazené ${shown} z ${scalpCandidates.length} raw scalp kandidátov / ${scalpAnalyses.length} coinov. No trade položky sú iba watch, nie vstup.`);
+}
+
 function renderMarketRegime() {
   const regime = window.CockpitMarketRegime.mockMarketRegime;
   const components = regime.components;
@@ -1026,6 +1233,18 @@ ui.scanRefreshButton?.addEventListener("click", () => {
   rebuildPipeline();
 });
 
+ui.scalpScanButton?.addEventListener("click", () => {
+  rebuildScalpPipeline();
+});
+
+[ui.scalpDirection, ui.scalpMinTrigger, ui.scalpMinQuality, ui.scalpNearOnly, ui.scalpStrictLong].forEach((control) => {
+  control?.addEventListener("change", () => {
+    renderScalpCandidates();
+    const shown = scalpCandidates.filter((candidate) => scalpCandidatePasses(candidate, scalpSettings())).length;
+    if (scalpCandidates.length) setScalpStatus("done", "Scalp filter updated", `Zobrazené ${shown} kandidátov z ${scalpCandidates.length} po úprave filtra.`);
+  });
+});
+
 [ui.scannerStyle, ui.scannerDirection, ui.scannerMinQuality, ui.scannerMinEdge, ui.marketRegimeFilter].forEach((control) => {
   control?.addEventListener("change", () => {
     if (control === ui.scannerStyle) {
@@ -1046,6 +1265,17 @@ ui.clearJournalButton?.addEventListener("click", () => {
 });
 
 ui.startPaperButton?.addEventListener("click", startPaperFromSelected);
+ui.startScalpPaperButton?.addEventListener("click", () => {
+  if (!selectedScalpCandidate) return;
+  selectedCandidate = selectedScalpCandidate;
+  startPaperFromSelected();
+});
+ui.openScalpSignalButton?.addEventListener("click", () => {
+  if (!selectedScalpCandidate) return;
+  selectedCandidate = selectedScalpCandidate;
+  renderSignalDetail(selectedCandidate);
+  setView("signal");
+});
 ui.addRealTradeButton?.addEventListener("click", addRealTrade);
 
 setInterval(updateLivePaperTracking, 7000);

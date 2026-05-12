@@ -16,6 +16,7 @@
       <nav class="nav" aria-label="Hlavná navigácia">
         <button class="active" data-view="dashboard">Dashboard</button>
         <button data-view="scanner">Scanner</button>
+        <button data-view="scalp">Scalp</button>
         <button data-view="signal">Signal Detail</button>
         <button data-view="triggers">Trigger Board</button>
         <button data-view="paper">Paper Trades</button>
@@ -117,7 +118,7 @@
         </div>
 
         <article class="panel scanner-controls">
-          <label>Style <select id="scannerStyle"><option value="intraday">Intraday</option><option value="scalp">Scalp</option><option value="swing">Swing</option></select></label>
+          <label>Style <select id="scannerStyle"><option value="intraday">Intraday</option><option value="swing">Swing</option></select></label>
           <label>Direction <select id="scannerDirection"><option value="both">Both</option><option value="long">Long</option><option value="short">Short</option></select></label>
           <label>Min quality <input id="scannerMinQuality" type="number" value="70"></label>
           <label>Min edge <input id="scannerMinEdge" type="number" value="25"></label>
@@ -154,6 +155,94 @@
             </div>
           </aside>
         </div>
+      </section>
+
+      <section class="view" data-panel="scalp">
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">Fast setups only</span>
+            <h1>Scalp</h1>
+          </div>
+          <button class="primary" id="scalpScanButton">Scan Scalp</button>
+        </div>
+
+        <article class="panel scanner-controls scalp-controls">
+          <label>Direction <select id="scalpDirection"><option value="both">Both</option><option value="long">Long</option><option value="short">Short</option></select></label>
+          <label>Min trigger <input id="scalpMinTrigger" type="number" value="45"></label>
+          <label>Min quality <input id="scalpMinQuality" type="number" value="55"></label>
+          <label class="toggle" title="Zobrazí iba setupy, kde cena nie je ďaleko od entry zóny."><input id="scalpNearOnly" type="checkbox" checked> Len blízko zóny</label>
+          <label class="toggle" title="Long VWAP reclaim potrebuje silnejšie potvrdenie, lebo v paper dátach robil horšie SL."><input id="scalpStrictLong" type="checkbox" checked> Prísny long reclaim</label>
+        </article>
+
+        <article class="panel scanner-status" id="scalpStatus">
+          <span>Status</span>
+          <strong>Ready</strong>
+          <p>Scalp scanner čaká na spustenie. Beží samostatne na 15m logike.</p>
+        </article>
+
+        <article class="panel scalp-playbook">
+          <div class="panel-head">
+            <h2>Scalp playbook</h2>
+            <span>VWAP / volume / execution</span>
+          </div>
+          <div class="playbook-grid">
+            <div>
+              <strong>Obchoduj iba aktívny coin</strong>
+              <p>Scalp má zmysel hlavne pri likvidite, úzkom spreade a volume nad bežným priemerom. Mŕtvy coin často iba šumí.</p>
+            </div>
+            <div>
+              <strong>VWAP je zóna, nie signál</strong>
+              <p>Dotyk VWAP nestačí. Hľadaj reclaim zhora/naspäť alebo reject s reakciou ceny, nie slepý vstup do čiary.</p>
+            </div>
+            <div>
+              <strong>Nenaháňaj pohyb</strong>
+              <p>Ak je cena ďaleko od VWAP/MA zóny, je to chase risk. Lepší scalp je pri reteste alebo jasnom odmietnutí.</p>
+            </div>
+            <div>
+              <strong>Stop musí byť rýchly</strong>
+              <p>Scalp neprežíva “možno sa to otočí”. Ak trigger zlyhá alebo cena stratí zónu, plán je invalidovaný.</p>
+            </div>
+            <div>
+              <strong>Long reclaim je prísnejší</strong>
+              <p>Z paper dát zatiaľ vidno, že long VWAP reclaim vie robiť škaredé SL. Preto potrebuje silnejší trigger a lepšie volume.</p>
+            </div>
+            <div>
+              <strong>Short reject sleduj oddelene</strong>
+              <p>VWAP reject short zatiaľ vyzeral čistejšie, ale vzorka je malá. Ber ho ako samostatný playbook, nie dôkaz výhody.</p>
+            </div>
+          </div>
+          <p class="source-note">Inšpirácia: SMB Capital VWAP playbook, Axia order-flow princípy, Investopedia scalping risk framework.</p>
+        </article>
+
+        <div class="scalp-layout">
+          <article class="panel">
+            <div class="panel-head"><h2>Scalp kandidáti</h2><span id="scalpUniverseLabel">15m live</span></div>
+            <div class="scalp-list" id="scalpList">
+              <p class="muted">Spusti Scan Scalp. Výstup budú iba coiny, ktoré prešli scalp filtrom.</p>
+            </div>
+          </article>
+
+          <aside class="panel scalp-detail">
+            <div class="panel-head">
+              <h2>Scalp detail</h2>
+              <span id="scalpDetailState">žiadny kandidát</span>
+            </div>
+            <h3 id="scalpDetailTitle">Vyber scalp kandidáta</h3>
+            <p id="scalpDetailVerdict" class="summary">Po kliknutí sa tu zobrazí setup, entry zóna, trigger a riziká.</p>
+            <div class="metric-list" id="scalpDetailMetrics"></div>
+            <div class="reason-grid stacked" id="scalpDetailReasons"></div>
+            <div class="plan-grid single-plan" id="scalpDetailPlan"></div>
+            <div class="trade-actions">
+              <button class="primary" id="startScalpPaperButton" type="button">Spustiť paper scalp</button>
+              <button class="secondary" id="openScalpSignalButton" type="button">Otvoriť Signal Detail</button>
+            </div>
+          </aside>
+        </div>
+
+        <article class="panel chart-panel compact">
+          <div class="panel-head"><h2>Scalp graf</h2><span id="scalpChartMeta">15m</span></div>
+          <div class="tv-frame-wrap small"><iframe id="scalpChartFrame" title="Scalp chart" loading="lazy"></iframe></div>
+        </article>
       </section>
 
       <section class="view" data-panel="signal">
