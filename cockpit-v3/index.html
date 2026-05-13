@@ -1,1 +1,294 @@
-loading
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trading Cockpit v3</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span>BINANCE FUTURES</span>
+        <strong>Cockpit v3</strong>
+      </div>
+      <nav class="nav" aria-label="Hlavná navigácia">
+        <button class="active" data-view="dashboard">Dashboard</button>
+        <button data-view="scanner">Scanner</button>
+        <button data-view="signal">Signal Detail</button>
+        <button data-view="triggers">Trigger Board</button>
+        <button data-view="paper">Paper Trades</button>
+        <button data-view="real">Real Trades</button>
+        <button data-view="journal">Journal</button>
+        <button data-view="rules">Rules</button>
+      </nav>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div class="status-chip good" id="btcStatus"><span>BTC 1h/4h</span><strong>Bullish</strong></div>
+        <div class="status-chip neutral" id="ethStatus"><span>ETH 1h/4h</span><strong>Mixed</strong></div>
+        <div class="status-chip warn" id="marketStatus"><span>Market</span><strong>Risk On, selektívne</strong></div>
+        <label class="coin-picker">
+          <span>Selected coin</span>
+          <input id="selectedCoin" value="SOLUSDT" aria-label="Selected coin">
+        </label>
+      </header>
+
+      <section class="view active" data-panel="dashboard">
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">Decision Pipeline</span>
+            <h1>Dashboard</h1>
+          </div>
+          <button class="primary">Refresh Mock</button>
+        </div>
+
+        <div class="grid two">
+          <article class="panel regime-panel">
+            <div class="panel-head">
+              <h2>Market Regime</h2>
+              <span class="badge good" id="regimeBadge">Risk On</span>
+            </div>
+            <div class="regime-score">
+              <strong id="regimeScore">72</strong>
+              <span id="regimeAdvice">Trh povoľuje long setupy, ale nie chase vstupy.</span>
+            </div>
+            <div class="metric-strip" id="regimeMetrics">
+              <span>BTC trend <b>up</b></span>
+              <span>ETH trend <b>mixed</b></span>
+              <span>Funding <b>ok</b></span>
+              <span>Volatility <b>normal</b></span>
+            </div>
+          </article>
+
+          <article class="panel selected-panel">
+            <div class="panel-head">
+              <h2>Selected Coin</h2>
+              <span id="selectedCoinMeta">SOLUSDT</span>
+            </div>
+            <div class="coin-ticker">
+              <strong id="selectedCoinPrice">142.84</strong>
+              <span class="positive" id="selectedCoinChange">mock</span>
+            </div>
+            <div class="metric-strip" id="selectedCoinMetrics">
+              <span>Bias <b>bullish</b></span>
+              <span>Long/Short <b>82 / 41</b></span>
+              <span>VWAP <b>nad</b></span>
+              <span>Room <b>2.1 ATR</b></span>
+            </div>
+            <p class="summary" id="selectedCoinSummary">Mock selected coin summary.</p>
+          </article>
+        </div>
+
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Multi-Timeframe Bias</h2>
+            <span>Intraday interpretácia</span>
+          </div>
+          <div class="mtf-grid">
+            <div><span>15m</span><strong>Bullish</strong><small>nad VWAP | RSI 58 | L 76/S 34</small></div>
+            <div><span>1h</span><strong>Bullish</strong><small>EMA stack aligned | L 82/S 41</small></div>
+            <div><span>4h</span><strong>Mixed</strong><small>pri rezistencii | čakať reakciu</small></div>
+          </div>
+          <p class="summary">Intraday long dáva zmysel iba po reteste alebo potvrdenom VWAP reclaime. Swing ešte nie je čistý.</p>
+        </article>
+
+        <article class="panel chart-panel">
+          <div class="panel-head">
+            <h2>Graf</h2>
+            <span>SOLUSDT | 1h</span>
+          </div>
+          <div class="tv-frame-wrap">
+            <iframe id="mainChartFrame" title="Selected coin chart" loading="lazy"></iframe>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" data-panel="scanner">
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">Candidates, not trades</span>
+            <h1>Scanner</h1>
+          </div>
+          <button class="primary" id="scanRefreshButton">Scan Universe</button>
+        </div>
+
+        <article class="panel scanner-controls">
+          <label>Style <select id="scannerStyle"><option value="intraday">Intraday</option><option value="scalp">Scalp</option><option value="swing">Swing</option></select></label>
+          <label>Direction <select id="scannerDirection"><option value="both">Both</option><option value="long">Long</option><option value="short">Short</option></select></label>
+          <label>Min quality <input id="scannerMinQuality" type="number" value="70"></label>
+          <label>Min edge <input id="scannerMinEdge" type="number" value="25"></label>
+          <label class="toggle" title="Keď je zapnutý, kandidáti proti BTC/ETH market režimu dostanú penalizáciu alebo budú odmietnutí."><input id="marketRegimeFilter" type="checkbox" checked> Market regime filter</label>
+        </article>
+
+        <article class="panel scanner-status" id="scannerStatus">
+          <span>Status</span>
+          <strong>Ready</strong>
+          <p>Scanner zatiaľ čaká na spustenie.</p>
+        </article>
+
+        <div class="scanner-layout">
+          <article class="panel">
+            <div class="panel-head"><h2>Kandidáti</h2><span id="candidateUniverseLabel">Mock universe</span></div>
+            <div class="candidate-table" id="candidateTable"></div>
+          </article>
+
+          <aside class="panel detail-preview">
+            <div class="panel-head"><h2>Selected Candidate</h2><span id="previewState">Armed</span></div>
+            <h3 id="previewTitle">SOLUSDT LONG</h3>
+            <p id="previewSetup">VWAP reclaim + volume expansion</p>
+            <div class="reason-grid">
+              <div><strong>Za</strong><span>trend, BTC alignment, room 2.1 ATR</span></div>
+              <div><strong>Proti</strong><span>4h rezistencia, funding mierne crowded</span></div>
+            </div>
+            <div class="metric-list">
+              <span>VWAP <b>good</b></span>
+              <span>OI <b>rising</b></span>
+              <span>Funding <b>0.012%</b></span>
+              <span>Volume <b>1.4x</b></span>
+              <span>ATR <b>0.82%</b></span>
+              <span>BTC align <b>yes</b></span>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" data-panel="signal">
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">Setup to Trigger</span>
+            <h1>Signal Detail</h1>
+          </div>
+          <div class="button-row">
+            <button class="secondary">Reject Setup</button>
+            <button class="primary" id="startPaperButton">Start Paper When Triggered</button>
+          </div>
+        </div>
+
+        <article class="panel signal-summary">
+          <div>
+            <h2 id="signalTitle">SOLUSDT LONG</h2>
+            <p id="signalSubtitle">VWAP reclaim | Intraday | state: <b class="positive">Armed</b></p>
+          </div>
+          <div class="score-row" id="signalScores">
+            <span>Quality <b>82</b></span>
+            <span>Trigger <b>68</b></span>
+            <span>Risk <b>Good</b></span>
+            <span>Edge <b>41</b></span>
+          </div>
+        </article>
+
+        <div class="grid two">
+          <article class="panel">
+            <div class="panel-head"><h2>Trigger Checklist</h2><span>close-based</span></div>
+            <ul class="checklist" id="signalChecklist">
+              <li class="done">Cena je v entry zóne</li>
+              <li class="done">1h bias súhlasí</li>
+              <li class="pending">Čaká sa na close nad VWAP</li>
+              <li class="pending">Volume musí byť nad 1.2x</li>
+              <li class="fail">Nebrat ak extension presiahne 1.8 ATR</li>
+            </ul>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head"><h2>For / Against</h2><span>context</span></div>
+            <div class="reason-grid stacked" id="signalReasons">
+              <div><strong>Za obchod</strong><span>BTC podporuje risk, lokálny trend je bullish, OI rastie spolu s cenou.</span></div>
+              <div><strong>Riziká</strong><span>4h rezistencia je blízko, funding nie je extrémny, ale smer je populárny.</span></div>
+            </div>
+          </article>
+        </div>
+
+        <article class="panel">
+          <div class="panel-head"><h2>Independent Trade Plans</h2><span>scalp / intraday / swing</span></div>
+          <div class="plan-grid" id="signalPlans">
+            <div class="plan-card"><span>Scalp</span><strong>Trigger close 5m</strong><p>Entry 142.20 | SL 141.35 | TP1 143.05 | TP2 143.60</p></div>
+            <div class="plan-card active"><span>Intraday</span><strong>VWAP reclaim</strong><p>Entry 142.20 | SL 140.80 | TP1 144.30 | TP2 146.10</p></div>
+            <div class="plan-card"><span>Swing</span><strong>4h structure</strong><p>Entry 141.50 | SL 136.80 | TP1 149.20 | TP2 156.40</p></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" data-panel="triggers">
+        <div class="page-head"><div><span class="eyebrow">Waiting for confirmation</span><h1>Trigger Board</h1></div></div>
+        <article class="panel">
+          <div class="trigger-list" id="triggerList">
+            <div><strong>SOLUSDT LONG</strong><span class="badge warn">Armed</span><p>Čaká na 15m close nad VWAP a volume 1.2x.</p></div>
+            <div><strong>APTUSDT SHORT</strong><span class="badge neutral">Forming</span><p>Čaká na rejection z rezistencie.</p></div>
+            <div><strong>NEARUSDT LONG</strong><span class="badge bad">Invalidated</span><p>Cena stratila entry zónu pred triggerom.</p></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" data-panel="paper">
+        <div class="page-head"><div><span class="eyebrow">Simulation first</span><h1>Paper Trades</h1></div><button class="secondary" id="clearPaperButton">Clear paper / journal</button></div>
+        <div class="grid two">
+          <article class="panel" id="paperList"></article>
+          <article class="panel chart-panel compact"><div class="panel-head"><h2>Paper Graf</h2><span id="paperChartMeta">SOLUSDT | 1h</span></div><div class="tv-frame-wrap small"><iframe id="paperChartFrame" title="Paper chart" loading="lazy"></iframe></div></article>
+        </div>
+      </section>
+
+      <section class="view" data-panel="real">
+        <div class="page-head"><div><span class="eyebrow">Manual trade support</span><h1>Real Trades</h1></div></div>
+        <article class="panel">
+          <div class="trade-form">
+            <input id="realPair" value="SOLUSDT" aria-label="Pair">
+            <select id="realDirection" aria-label="Direction"><option value="long">Long</option><option value="short">Short</option></select>
+            <select id="realStyle" aria-label="Style"><option value="intraday">Intraday</option><option value="scalp">Scalp</option><option value="swing">Swing</option></select>
+            <input id="realEntry" value="142.20" aria-label="Entry">
+            <input id="realMargin" value="10" aria-label="Margin">
+            <input id="realLeverage" value="10" aria-label="Leverage">
+            <input id="realStop" value="140.80" aria-label="Stop">
+            <input id="realTarget" value="146.10" aria-label="Target">
+            <button class="primary" id="addRealTradeButton" type="button">Add</button>
+          </div>
+        </article>
+        <div class="grid two">
+          <article class="panel" id="realTradesList"></article>
+          <article class="panel chart-panel compact"><div class="panel-head"><h2>Real Trades Graf</h2><span id="realChartMeta">SOLUSDT | 1h</span></div><div class="tv-frame-wrap small"><iframe id="realChartFrame" title="Real trades chart" loading="lazy"></iframe></div></article>
+        </div>
+      </section>
+
+      <section class="view" data-panel="journal">
+        <div class="page-head"><div><span class="eyebrow">Feedback loop</span><h1>Journal</h1></div></div>
+        <div class="grid two">
+          <article class="panel" id="journalSummary"></article>
+          <article class="panel" id="journalFeedback"></article>
+        </div>
+        <article class="panel">
+          <div class="journal-table" id="journalTable">
+            <div class="journal-head"><span>Coin</span><span>Style</span><span>Setup</span><span>Entry</span><span>Exit</span><span>10x</span><span>Reason</span></div>
+            <div><span>WLD</span><span>Intraday</span><span>Retest</span><span>0.256</span><span>0.2548</span><span class="danger">-5.1%</span><span>SL, BTC weakness</span></div>
+            <div><span>SOL</span><span>Scalp</span><span>VWAP</span><span>142.2</span><span>143.4</span><span class="positive">+8.4%</span><span>TP1 hit</span></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" data-panel="rules">
+        <div class="page-head"><div><span class="eyebrow">Visible rules</span><h1>Rules</h1></div></div>
+        <article class="panel">
+          <div class="panel-head">
+            <h2>Scanner Rules</h2>
+            <span>read-only mock</span>
+          </div>
+          <div class="rules-table" id="rulesTable"></div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script src="models.js"></script>
+  <script src="market-regime.js"></script>
+  <script src="data-adapter.js"></script>
+  <script src="coin-analysis-engine.js"></script>
+  <script src="scanner-engine.js"></script>
+  <script src="trigger-engine.js"></script>
+  <script src="paper-simulator.js"></script>
+  <script src="journal-engine.js"></script>
+  <script src="rules-engine.js"></script>
+  <script src="storage.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
