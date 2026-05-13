@@ -1,1 +1,156 @@
-loading
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gainers Lab v1</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span>BINANCE FUTURES</span>
+        <strong>Gainers Lab v1</strong>
+      </div>
+      <nav class="nav" aria-label="Navigácia">
+        <button class="active" data-view="dashboard">Dashboard</button>
+        <button data-view="paper">Paper Lab</button>
+        <button data-view="journal">Journal</button>
+      </nav>
+      <div class="side-note">
+        <strong>Logika</strong>
+        <p>TOP 10 gainers sa hodnotia ako volatilné 15m scalpy. Cieľ nie je skóre, ale scenár, zóna a reakcia.</p>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div class="status-card">
+          <span>Universe</span>
+          <strong id="universeStatus">Top 10 gainers</strong>
+        </div>
+        <div class="status-card">
+          <span>Refresh</span>
+          <strong id="refreshStatus">manual</strong>
+        </div>
+        <div class="status-card live">
+          <span id="selectedSymbol">-</span>
+          <strong id="selectedPrice">-</strong>
+          <small id="selectedChange">-</small>
+        </div>
+        <button class="primary" id="scanButton" type="button">Scan Live</button>
+      </header>
+
+      <section class="view active" data-panel="dashboard">
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">Volatility watch</span>
+            <h1>Top Gainers</h1>
+          </div>
+          <p id="scanStatus">Čakám na live scan.</p>
+        </div>
+
+        <div class="dashboard-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Top 10 gainers</h2>
+              <span id="gainersMeta">live futures</span>
+            </div>
+            <div class="gainer-list" id="gainerList">
+              <p class="muted">Spusti Scan Live. Appka načíta 24h futures gainers a 15m graf pre každý coin.</p>
+            </div>
+          </section>
+
+          <section class="panel detail-panel">
+            <div class="panel-head">
+              <h2>Setup</h2>
+              <span id="detailState">žiadny coin</span>
+            </div>
+            <h3 id="detailTitle">Vyber gainera</h3>
+            <p class="scenario-text" id="scenarioText">Po kliknutí sa zobrazí predikovaný scenár, entry zóna, štrukturálny SL a TP mapovanie.</p>
+            <div class="metric-list" id="detailMetrics"></div>
+            <div class="setup-grid" id="setupGrid"></div>
+            <div class="action-row">
+              <button class="primary" id="startPaperButton" type="button">Spustiť paper scenár</button>
+              <button class="secondary" id="refreshCoinButton" type="button">Obnoviť coin</button>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel chart-panel">
+          <div class="panel-head">
+            <h2>15m graf</h2>
+            <span id="chartMeta">-</span>
+          </div>
+          <div class="chart-wrap">
+            <iframe id="chartFrame" title="15m chart" loading="lazy"></iframe>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" data-panel="paper">
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">Simulation first</span>
+            <h1>Paper Lab</h1>
+          </div>
+          <p>Výsledky sú reálne percentá, bez 10x páky.</p>
+        </div>
+
+        <div class="paper-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Čakajúce scenáre</h2>
+              <span id="waitingMeta">0 waiting</span>
+            </div>
+            <div class="trade-stack" id="waitingTrades"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Aktívne paper trades</h2>
+              <span id="activeMeta">0 active</span>
+            </div>
+            <div class="trade-stack" id="activeTrades"></div>
+          </section>
+        </div>
+
+        <section class="panel chart-panel">
+          <div class="panel-head">
+            <h2>Paper graf</h2>
+            <span id="paperChartMeta">sledovaný coin | 15m</span>
+          </div>
+          <div class="chart-wrap">
+            <iframe id="paperChartFrame" title="Paper Lab chart" loading="lazy"></iframe>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" data-panel="journal">
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">Feedback loop</span>
+            <h1>Journal</h1>
+          </div>
+          <button class="secondary danger" id="clearJournalButton" type="button">Vymazať journal</button>
+        </div>
+
+        <section class="panel">
+          <div class="summary-grid" id="journalSummary"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Closed paper trades</h2>
+            <span id="journalMeta">0 closed</span>
+          </div>
+          <div class="journal-table" id="journalTable"></div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
