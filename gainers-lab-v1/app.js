@@ -41,6 +41,7 @@ const ui = {
 
 let gainers = [];
 let selected = null;
+const MAX_STRUCTURAL_RISK_PCT = 7;
 
 function uid(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -59,6 +60,19 @@ function pct(value, digits = 2) {
 function movePct(entry, price, side) {
   if (!Number.isFinite(entry) || !Number.isFinite(price) || entry <= 0) return NaN;
   return ((price - entry) / entry) * 100 * (side === "short" ? -1 : 1);
+}
+
+function absMovePct(entry, price) {
+  if (!Number.isFinite(entry) || !Number.isFinite(price) || entry <= 0) return NaN;
+  return Math.abs(((price - entry) / entry) * 100);
+}
+
+function sessionLabel(stamp = new Date().toISOString()) {
+  const hour = new Date(stamp).getHours();
+  if (hour >= 6 && hour < 12) return "ráno";
+  if (hour >= 12 && hour < 18) return "deň";
+  if (hour >= 18 && hour < 23) return "večer";
+  return "noc";
 }
 
 function average(values) {
@@ -161,6 +175,41 @@ function nearestAbove(levels, price, fallback) {
   return values[0] ?? fallback;
 }
 
+function clusterLevels(levels, atrValue) {
+  const sorted = [...new Set(levels.filter(Number.isFinite).map((level) => Number(level.toFixed(8))))].sort((a, b) => a - b);
+  const clusters = [];
+  sorted.forEach((level) => {
+    const last = clusters.at(-1);
+    if (last && Math.abs(level - last.anchor) <= atrValue * 0.28) {
+      last.values.push(level);
+      last.anchor = average(last.values);
+    } else {
+      clusters.push({ anchor: level, values: [level] });
+    }
+  });
+  return clusters;
+}
+
+function bestZoneAnchor(levels, price, atrValue, side, preference = "near") {
+  const clusters = clusterLevels(levels, atrValue);
+  const scored = clusters
+    .map((cluster) => {
+      const distanceAtr = atrValue ? Math.abs(price - cluster.anchor) / atrValue : 0;
+      const isCorrectSide = side === "long" ? cluster.anchor <= price : cluster.anchor >= price;
+      const confluence = Math.min(cluster.values.length, 4);
+      let score = confluence * 10;
+      if (isCorrectSide) score += 18;
+      if (distanceAtr >= 0.25 && distanceAtr <= 2.4) score += 18;
+      if (distanceAtr > 0.05 && distanceAtr < 0.25) score += 6;
+      if (distanceAtr > 2.4) score -= (distanceAtr - 2.4) * 9;
+      if (preference === "deep" && distanceAtr >= 1.2) score += 10;
+      if (preference === "breakout" && distanceAtr <= 1.2) score += 10;
+      return { anchor: cluster.anchor, score, distanceAtr };
+    })
+    .sort((a, b) => b.score - a.score);
+  return scored[0]?.anchor ?? (side === "long" ? price - atrValue : price + atrValue);
+}
+
 function zoneAround(anchor, atrValue, width = 0.28) {
   return {
     from: Math.max(0, anchor - atrValue * width),
@@ -196,12 +245,18 @@ function classifyScenario(data) {
   const { last, rangeHigh, rangeLow, atrNow, vwapNow, volumeRatio, extensionAtr, ma7, ma25 } = data;
   const nearHighAtr = atrNow ? (rangeHigh - last.close) / atrNow : 0;
   const aboveTrend = last.close >= vwapNow && ma7 >= ma25;
+  const upperWick = last.high - Math.max(last.open, last.close);
+  const lowerWick = Math.min(last.open, last.close) - last.low;
+  const body = Math.abs(last.close - last.open) || atrNow * 0.05;
+  const rangePosition = ((last.close - rangeLow) / (rangeHigh - rangeLow || 1)) * 100;
+  const clearReject = nearHighAtr <= 1.1 && upperWick > body * 1.15 && last.close < last.high - atrNow * 0.22;
 
-  if (extensionAtr >= 2.6 && nearHighAtr <= 0.7) return "Too hot / top watch";
-  if (extensionAtr >= 1.7 && volumeRatio < 0.9) return "Top rejection short";
-  if (aboveTrend && extensionAtr <= 1.25 && last.close >= ma25) return "Pullback long";
+  if (clearReject && extensionAtr >= 1.15) return "Top rejection short";
+  if (extensionAtr >= 2.2 && nearHighAtr <= 0.8) return "Too hot / top watch";
+  if (aboveTrend && extensionAtr <= 1.45 && last.close >= ma25 && volumeRatio >= 0.65) return "Pullback long";
   if (last.close >= rangeHigh - atrNow * 0.35 && volumeRatio >= 1.15) return "Breakout retest";
-  if ((last.close - rangeLow) / (rangeHigh - rangeLow || 1) < 0.35) return "Range low bounce";
+  if (rangePosition <= 25 && lowerWick >= body * 0.8) return "Range low bounce";
+  if (rangePosition >= 75 && clearReject) return "Top rejection short";
   return "Range after pump";
 }
 
@@ -210,26 +265,73 @@ function scenarioPlan(data, scenario) {
   const priceNow = last.close;
   const side = scenario.includes("Short") || scenario.includes("top") ? "short" : "long";
   const supports = [...levels.lows, rangeLow, vwapNow, ma25, ma7].filter(Number.isFinite);
-  const resistances = [...levels.highs, rangeHigh].filter(Number.isFinite);
+  const resistances = [...levels.highs, rangeHigh, ma7, ma25, vwapNow].filter(Number.isFinite);
 
   if (scenario === "Top rejection short" || scenario === "Too hot / top watch") {
-    const entryAnchor = Math.max(nearestAbove(resistances, priceNow, rangeHigh), priceNow);
-    const entryZone = zoneAround(entryAnchor, atrNow, 0.35);
-    const stop = entryZone.to + atrNow * 0.65;
-    const tp1 = nearestBelow([vwapNow, ma25, ...supports], entryZone.from, priceNow - atrNow * 1.2);
-    const tp2 = nearestBelow([ma25, rangeLow, ...supports], tp1, priceNow - atrNow * 2.0);
-    const tp3 = Math.max(0, nearestBelow([rangeLow, ...supports], tp2, priceNow - atrNow * 3.0));
-    return { side: "short", entry: (entryZone.from + entryZone.to) / 2, entryZone, stop, targets: [tp1, tp2, tp3], invalidation: "15m close nad high/reject zónou.", note: "Short iba po jasnom odmietnutí vrchu. Bez rejectu je to iba watch." };
+    const entryAnchor = bestZoneAnchor([rangeHigh, ...levels.highs, ma7], priceNow, atrNow, "short");
+    const entryZone = zoneAround(entryAnchor, atrNow, 0.26);
+    const swingStop = nearestAbove([rangeHigh, ...levels.highs], entryZone.to, entryZone.to + atrNow * 0.9);
+    const stop = Math.max(swingStop + atrNow * 0.18, entryZone.to + atrNow * 0.45);
+    const tp1 = nearestBelow([vwapNow, ma25, ...supports], entryZone.from, entryZone.from - atrNow * 0.9);
+    const tp2 = nearestBelow([ma25, rangeLow, ...supports], tp1, entryZone.from - atrNow * 1.8);
+    const tp3 = Math.max(0, nearestBelow([rangeLow, ...supports], tp2, entryZone.from - atrNow * 2.8));
+    return finalizePlan({
+      side: "short",
+      entryZone,
+      stop,
+      targets: [tp1, tp2, tp3],
+      invalidation: "15m close späť nad rejection/high zónou.",
+      note: scenario === "Too hot / top watch"
+        ? "Cena je príliš natiahnutá. Bez návratu do zóny a odmietnutia vrchu je to watch only."
+        : "Short až po odmietnutí vrchu alebo návrate pod zónu. Samotná vysoká cena nestačí.",
+    });
   }
 
-  const entryAnchor = nearestBelow([vwapNow, ma25, ma7, ...supports], priceNow, priceNow - atrNow * 0.8);
-  const entryZone = zoneAround(entryAnchor, atrNow, scenario === "Breakout retest" ? 0.22 : 0.35);
+  const preference = scenario === "Range low bounce" ? "deep" : scenario === "Breakout retest" ? "breakout" : "near";
+  const anchorPool = scenario === "Range low bounce"
+    ? [rangeLow, ...levels.lows, ma25, vwapNow]
+    : scenario === "Breakout retest"
+      ? [rangeHigh, ...levels.highs, vwapNow, ma7]
+      : [vwapNow, ma25, ma7, ...levels.lows, rangeLow];
+  const entryAnchor = bestZoneAnchor(anchorPool, priceNow, atrNow, "long", preference);
+  const entryZone = zoneAround(entryAnchor, atrNow, scenario === "Breakout retest" ? 0.22 : 0.30);
   const structuralLow = nearestBelow([rangeLow, ...supports], entryZone.from, entryZone.from - atrNow);
-  const stop = Math.max(0, structuralLow - atrNow * 0.45);
-  const tp1 = nearestAbove([rangeHigh, ...resistances], entryZone.to, priceNow + atrNow * 1.2);
-  const tp2 = Math.max(tp1 + atrNow * 0.7, entryZone.to + Math.abs(entryZone.to - stop) * 1.8);
-  const tp3 = Math.max(tp2 + atrNow * 0.8, entryZone.to + Math.abs(entryZone.to - stop) * 2.6);
-  return { side, entry: (entryZone.from + entryZone.to) / 2, entryZone, stop, targets: [tp1, tp2, tp3], invalidation: "Strata štrukturálneho low alebo návrat pod VWAP bez reakcie.", note: "Long až pri reakcii na pullback/retest. Pumpovaný coin nebrať uprostred range." };
+  const stop = Math.max(0, Math.min(structuralLow - atrNow * 0.30, entryZone.from - atrNow * 0.55));
+  const tp1 = nearestAbove([rangeHigh, ...resistances], entryZone.to, entryZone.to + atrNow * 1.0);
+  const risk = Math.abs(entryZone.from - stop);
+  const tp2 = Math.max(tp1 + atrNow * 0.65, entryZone.to + risk * 1.55);
+  const tp3 = Math.max(tp2 + atrNow * 0.75, entryZone.to + risk * 2.25);
+  return finalizePlan({
+    side,
+    entryZone,
+    stop,
+    targets: [tp1, tp2, tp3],
+    invalidation: "Strata štrukturálneho low alebo návrat pod VWAP bez reakcie.",
+    note: "Long až pri reakcii na pullback/retest zónu. Pumpovaný coin nebrať uprostred range.",
+  });
+}
+
+function finalizePlan(plan) {
+  const from = Math.min(plan.entryZone.from, plan.entryZone.to);
+  const to = Math.max(plan.entryZone.from, plan.entryZone.to);
+  const entry = plan.side === "long" ? from : to;
+  const riskPct = absMovePct(entry, plan.stop);
+  const targets = plan.targets
+    .filter(Number.isFinite)
+    .filter((target) => plan.side === "long" ? target > entry : target < entry)
+    .slice(0, 3);
+  while (targets.length < 3) {
+    const risk = Math.abs(entry - plan.stop);
+    const multiple = 1 + targets.length * 0.75;
+    targets.push(plan.side === "long" ? entry + risk * multiple : Math.max(0, entry - risk * multiple));
+  }
+  return {
+    ...plan,
+    entry,
+    entryZone: { from, to },
+    targets,
+    riskPct,
+  };
 }
 
 function analyzeGainer(ticker, candles) {
@@ -249,7 +351,18 @@ function analyzeGainer(ticker, candles) {
   const levels = swingLevels(candles);
   const scenario = classifyScenario({ last, rangeHigh, rangeLow, atrNow, vwapNow, volumeRatio, extensionAtr, ma7, ma25 });
   const plan = scenarioPlan({ last, atrNow, vwapNow, ma7, ma25, ma99, rangeHigh, rangeLow, levels }, scenario);
-  const state = scenario.includes("Too hot") ? "watch only" : extensionAtr <= 1.25 ? "near zone" : "forming";
+  const distanceToZone = plan.side === "long"
+    ? Math.max(0, last.close - plan.entryZone.to)
+    : Math.max(0, plan.entryZone.from - last.close);
+  const distanceToZoneAtr = atrNow ? distanceToZone / atrNow : 0;
+  const rangePosition = ((last.close - rangeLow) / (rangeHigh - rangeLow || 1)) * 100;
+  const warnings = [];
+  if (plan.riskPct > MAX_STRUCTURAL_RISK_PCT) warnings.push(`SL je široký ${pct(-plan.riskPct)} - watch only.`);
+  if (scenario === "Range after pump") warnings.push("Range po pumpe je watch only, kým nepríde range low bounce alebo high reject.");
+  if (scenario === "Pullback long" && volumeRatio < 0.8) warnings.push("Long pullback má slabší volume kontext.");
+  if ((scenario === "Top rejection short" || scenario === "Too hot / top watch") && extensionAtr < 1.1) warnings.push("Short rejection nemá dostatočné natiahnutie.");
+  const tradable = !scenario.includes("Too hot") && warnings.length === 0;
+  const state = !tradable ? "watch only" : distanceToZoneAtr <= 0.45 ? "ready zone" : "forming";
 
   return {
     id: ticker.symbol,
@@ -271,6 +384,10 @@ function analyzeGainer(ticker, candles) {
     scenario,
     state,
     plan,
+    rangePosition,
+    distanceToZoneAtr,
+    warnings,
+    tradable,
   };
 }
 
@@ -291,6 +408,7 @@ function scenarioSide(scenario, plan = null) {
 function scenarioText(item) {
   if (!item) return "-";
   const p = item.plan;
+  if (!item.tradable) return `${p.note} ${item.warnings.join(" ")}`;
   if (item.scenario === "Pullback long") return "Trend stále žije, ale vstup dáva zmysel až pri pullbacku do VWAP/MA/support zóny.";
   if (item.scenario === "Breakout retest") return "Cena tlačí high. Nehnať breakout, čakať retest predošlého high alebo VWAP zóny.";
   if (item.scenario === "Top rejection short") return "Coin je po pumpe vysoko. Short len po odmietnutí high, stop až za štruktúrou.";
@@ -317,6 +435,8 @@ function selectGainer(pair) {
     <span>ATR <b>${pct(selected.atrPct)}</b></span>
     <span>Volume <b>${fmt(selected.volumeRatio, 2)}x</b></span>
     <span>Range <b>${fmt(selected.rangeLow)} / ${fmt(selected.rangeHigh)}</b></span>
+    <span>Zone dist <b>${fmt(selected.distanceToZoneAtr, 2)} ATR</b></span>
+    <span>Risk <b class="${selected.plan.riskPct > MAX_STRUCTURAL_RISK_PCT ? "negative" : "positive"}">${pct(-selected.plan.riskPct)}</b></span>
   `;
   const p = selected.plan;
   const targetHtml = p.targets.map((target, index) => `
@@ -331,13 +451,16 @@ function selectGainer(pair) {
       <p>${p.note}</p>
       <div class="setup-levels">
         <span>Entry zóna <b>${zoneText(p.entryZone)}</b></span>
-        <span>Mid entry <b>${fmt(p.entry)}</b></span>
+        <span>Trigger entry <b>${fmt(p.entry)}</b></span>
         <span>Štrukturálny SL <b class="negative">${fmt(p.stop)} ${pct(movePct(p.entry, p.stop, p.side))}</b></span>
         ${targetHtml}
       </div>
       <p class="muted">Invalidácia: ${p.invalidation}</p>
+      ${selected.warnings.length ? `<p class="warning">Watch filter: ${selected.warnings.join(" ")}</p>` : ""}
     </article>
   `;
+  ui.startPaperButton.disabled = false;
+  ui.startPaperButton.textContent = selected.tradable ? "Spustiť paper trade" : "Spustiť paper watch";
   syncChart(selected.pair);
   renderGainers();
 }
@@ -364,6 +487,7 @@ function renderGainers() {
         <span>ATR <b>${pct(item.atrPct)}</b></span>
         <span>Vol <b>${fmt(item.volumeRatio, 2)}x</b></span>
         <span>VWAP <b>${fmt(item.extensionAtr, 2)} ATR</b></span>
+        <span>Risk <b class="${item.plan.riskPct > MAX_STRUCTURAL_RISK_PCT ? "negative" : ""}">${pct(-item.plan.riskPct)}</b></span>
       </div>
     </article>
   `).join("");
@@ -418,6 +542,7 @@ function startPaper() {
   if (!selected) return;
   const p = selected.plan;
   const state = paperState();
+  const createdAt = new Date().toISOString();
   state.waiting.unshift({
     id: uid("paper"),
     pair: selected.pair,
@@ -427,7 +552,10 @@ function startPaper() {
     entryZone: p.entryZone,
     stop: p.stop,
     targets: p.targets.map((price, index) => ({ label: `TP${index + 1}`, price, hit: false })),
-    createdAt: new Date().toISOString(),
+    tradable: selected.tradable,
+    warnings: selected.warnings,
+    createdAt,
+    createdSession: sessionLabel(createdAt),
     status: "waiting",
   });
   savePaper(state);
@@ -464,6 +592,7 @@ function journalEntryFromTrade(trade, exit, reason, status = "closed") {
     pair: trade.pair,
     side: trade.side,
     scenario: trade.scenario,
+    session: trade.openedSession || trade.createdSession || sessionLabel(trade.openedAt || trade.createdAt || new Date().toISOString()),
     entry: trade.entry,
     exit,
     reason,
@@ -507,6 +636,7 @@ async function updatePaper() {
         entry: current,
         originalStop: trade.originalStop ?? trade.stop,
         openedAt: new Date().toISOString(),
+        openedSession: sessionLabel(),
       });
     } else {
       nextWaiting.push(trade);
@@ -563,6 +693,7 @@ function tradeCard(trade, active = false) {
         <span class="badge ${active ? "good" : "neutral"}">${active ? "active" : "waiting"}</span>
       </div>
       <p>${trade.scenario}</p>
+      ${trade.tradable === false ? `<p class="warning">Watch setup: ${(trade.warnings || []).join(" ")}</p>` : ""}
       <div class="metric-list">
         <span>Entry <b>${active ? fmt(trade.entry) : zoneText(trade.entryZone)}</b></span>
         <span>Live <b>${fmt(live)}</b></span>
@@ -641,11 +772,12 @@ function renderJournal() {
           <span>${dayClosed.length} closed | ${dayRows.length - dayClosed.length} running | WR ${dayClosed.length ? Math.round((dayWins / dayClosed.length) * 100) : 0}% | avg ${pct(dayAvg)}</span>
         </div>
       </div>
-      <div class="journal-row journal-head"><span>Coin</span><span>Side</span><span>Scenario</span><span>Entry</span><span>Exit</span><span>TP hit</span><span>Result</span><span>Status</span></div>
+      <div class="journal-row journal-head"><span>Coin</span><span>Side</span><span>Session</span><span>Scenario</span><span>Entry</span><span>Exit</span><span>TP hit</span><span>Result</span><span>Status</span></div>
       ${dayRows.map((row) => `
       <div class="journal-row ${row.status === "running" ? "running" : ""}">
         <span>${row.pair}</span>
         <span>${row.side}</span>
+        <span>${row.session || "-"}</span>
         <span>${row.scenario}</span>
         <span>${fmt(row.entry)}</span>
         <span>${fmt(row.exit)}</span>
