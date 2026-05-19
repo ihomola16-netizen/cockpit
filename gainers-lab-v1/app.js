@@ -47,14 +47,62 @@ function uid(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function fmt(value, digits = 4) {
+function priceDigits(value) {
+  const abs = Math.abs(Number(value));
+  if (!Number.isFinite(abs)) return 4;
+  if (abs >= 100) return 2;
+  if (abs >= 1) return 4;
+  if (abs >= 0.1) return 5;
+  if (abs >= 0.01) return 6;
+  if (abs >= 0.001) return 7;
+  if (abs >= 0.0001) return 8;
+  return 10;
+}
+
+function priceDigitsFor(values) {
+  const nums = values.map(Number).filter(Number.isFinite);
+  if (!nums.length) return 4;
+  const spread = Math.max(...nums) - Math.min(...nums);
+  const spreadDigits = spread > 0 ? Math.ceil(-Math.log10(spread)) + 1 : 0;
+  return clamp(Math.max(...nums.map(priceDigits), spreadDigits), 2, 10);
+}
+
+function fmt(value, digits = "auto") {
   if (!Number.isFinite(value)) return "-";
-  return value.toLocaleString("en-US", { maximumFractionDigits: digits });
+  const fractionDigits = digits === "auto" ? priceDigits(value) : digits;
+  return value.toLocaleString("en-US", { maximumFractionDigits: fractionDigits });
+}
+
+function fmtPrice(value, peers = []) {
+  if (!Number.isFinite(value)) return "-";
+  return value.toLocaleString("en-US", { maximumFractionDigits: priceDigitsFor([value, ...peers]) });
 }
 
 function pct(value, digits = 2) {
   if (!Number.isFinite(value)) return "-";
   return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}%`;
+}
+
+function compactNumber(value, digits = 1) {
+  if (!Number.isFinite(value)) return "-";
+  return Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: digits,
+  }).format(value);
+}
+
+function usd(value) {
+  if (!Number.isFinite(value)) return "-";
+  return `$${compactNumber(value, value >= 1000000 ? 1 : 0)}`;
+}
+
+function timeAgo(from, to = new Date().toISOString()) {
+  if (!from) return "-";
+  const minutes = Math.max(0, Math.floor((new Date(to) - new Date(from)) / 60000));
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours > 0) return `${hours}h ${rest}m`;
+  return `${minutes}m`;
 }
 
 function movePct(entry, price, side) {
@@ -77,6 +125,10 @@ function sessionLabel(stamp = new Date().toISOString()) {
 
 function average(values) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function storeGet(key, fallback) {
@@ -113,6 +165,14 @@ async function klines(pair, interval = "15m", limit = 160) {
 async function price(pair) {
   const data = await json(`${API}/fapi/v1/ticker/price?symbol=${pair}`);
   return Number(data.price);
+}
+
+async function bookTickers() {
+  const rows = await json(`${API}/fapi/v1/ticker/bookTicker`);
+  return rows.reduce((map, row) => {
+    map[row.symbol] = row;
+    return map;
+  }, {});
 }
 
 function sma(values, period) {
@@ -219,26 +279,26 @@ function zoneAround(anchor, atrValue, width = 0.28) {
 
 function zoneText(zone) {
   if (!zone) return "-";
-  return `${fmt(zone.from)}-${fmt(zone.to)}`;
+  return `${fmtPrice(zone.from, [zone.to])}-${fmtPrice(zone.to, [zone.from])}`;
 }
 
 function chartUrl(pair, interval = "15") {
   return `https://www.tradingview.com/widgetembed/?symbol=${encodeURIComponent(`BINANCE:${pair}.P`)}&interval=${interval}&hidesidetoolbar=1&symboledit=0&saveimage=0&toolbarbg=0f1113&studies=[]&theme=dark&style=1&timezone=Europe%2FBratislava&withdateranges=1&hideideas=1`;
 }
 
-function syncChart(pair) {
+function syncChart(pair, target = "both") {
   if (!pair) return;
   const url = chartUrl(pair);
-  if (ui.chartFrame && ui.chartFrame.dataset.url !== url) {
+  if ((target === "both" || target === "main") && ui.chartFrame && ui.chartFrame.dataset.url !== url) {
     ui.chartFrame.dataset.url = url;
     ui.chartFrame.src = url;
   }
-  if (ui.chartMeta) ui.chartMeta.textContent = `${pair} | 15m`;
-  if (ui.paperChartFrame && ui.paperChartFrame.dataset.url !== url) {
+  if ((target === "both" || target === "main") && ui.chartMeta) ui.chartMeta.textContent = `${pair} | 15m`;
+  if ((target === "both" || target === "paper") && ui.paperChartFrame && ui.paperChartFrame.dataset.url !== url) {
     ui.paperChartFrame.dataset.url = url;
     ui.paperChartFrame.src = url;
   }
-  if (ui.paperChartMeta) ui.paperChartMeta.textContent = `${pair} | 15m`;
+  if ((target === "both" || target === "paper") && ui.paperChartMeta) ui.paperChartMeta.textContent = `${pair} | 15m`;
 }
 
 function classifyScenario(data) {
@@ -334,7 +394,29 @@ function finalizePlan(plan) {
   };
 }
 
-function analyzeGainer(ticker, candles) {
+function scenarioBaseScore(scenario) {
+  if (scenario === "Top rejection short") return 72;
+  if (scenario === "Pullback long") return 68;
+  if (scenario === "Range low bounce") return 64;
+  if (scenario === "Breakout retest") return 58;
+  if (scenario === "Too hot / top watch") return 42;
+  return 35;
+}
+
+function qualityRating({ scenario, plan, volumeRatio, extensionAtr, distanceToZoneAtr, atrPct, tradable, warnings }) {
+  let score = scenarioBaseScore(scenario);
+  score += clamp((1.2 - distanceToZoneAtr) * 14, -18, 18);
+  score += clamp((volumeRatio - 0.7) * 12, -10, 18);
+  score += clamp((1.8 - extensionAtr) * 8, -18, 10);
+  score += clamp((MAX_STRUCTURAL_RISK_PCT - plan.riskPct) * 3.2, -24, 18);
+  if (atrPct >= 0.8 && atrPct <= 8) score += 8;
+  if (atrPct > 12) score -= 14;
+  if (!tradable) score -= 18;
+  score -= Math.min((warnings || []).length * 6, 18);
+  return clamp(Math.round(score), 0, 100);
+}
+
+function analyzeGainer(ticker, candles, book = null) {
   const closes = candles.map((candle) => candle.close);
   const last = candles.at(-1);
   const atrNow = atr(candles);
@@ -347,7 +429,13 @@ function analyzeGainer(ticker, candles) {
   const rangeLow = Math.min(...recent.map((candle) => candle.low));
   const avgVolume = average(candles.slice(-21, -1).map((candle) => candle.volume));
   const volumeRatio = avgVolume ? last.volume / avgVolume : 1;
+  const totalTakerVolume = candles.slice(-8).reduce((sum, candle) => sum + candle.volume, 0);
+  const takerBuyVolume = candles.slice(-8).reduce((sum, candle) => sum + candle.takerBuyVolume, 0);
+  const takerBuyPct = totalTakerVolume ? (takerBuyVolume / totalTakerVolume) * 100 : NaN;
   const extensionAtr = atrNow ? Math.abs(last.close - vwapNow) / atrNow : 0;
+  const bid = Number(book?.bidPrice);
+  const ask = Number(book?.askPrice);
+  const spreadPct = Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 ? ((ask - bid) / bid) * 100 : NaN;
   const levels = swingLevels(candles);
   const scenario = classifyScenario({ last, rangeHigh, rangeLow, atrNow, vwapNow, volumeRatio, extensionAtr, ma7, ma25 });
   const plan = scenarioPlan({ last, atrNow, vwapNow, ma7, ma25, ma99, rangeHigh, rangeLow, levels }, scenario);
@@ -363,6 +451,8 @@ function analyzeGainer(ticker, candles) {
   if ((scenario === "Top rejection short" || scenario === "Too hot / top watch") && extensionAtr < 1.1) warnings.push("Short rejection nemá dostatočné natiahnutie.");
   const tradable = !scenario.includes("Too hot") && warnings.length === 0;
   const state = !tradable ? "watch only" : distanceToZoneAtr <= 0.45 ? "ready zone" : "forming";
+  const atrPct = atrNow ? (atrNow / last.close) * 100 : NaN;
+  const rating = qualityRating({ scenario, plan, volumeRatio, extensionAtr, distanceToZoneAtr, atrPct, tradable, warnings });
 
   return {
     id: ticker.symbol,
@@ -370,9 +460,13 @@ function analyzeGainer(ticker, candles) {
     price: last.close,
     dayChange: Number(ticker.priceChangePercent),
     quoteVolume: Number(ticker.quoteVolume),
+    tradeCount: Number(ticker.count),
+    bid,
+    ask,
+    spreadPct,
     candles,
     atr: atrNow,
-    atrPct: atrNow ? (atrNow / last.close) * 100 : NaN,
+    atrPct,
     vwap: vwapNow,
     ma7,
     ma25,
@@ -380,6 +474,7 @@ function analyzeGainer(ticker, candles) {
     rangeHigh,
     rangeLow,
     volumeRatio,
+    takerBuyPct,
     extensionAtr,
     scenario,
     state,
@@ -388,6 +483,7 @@ function analyzeGainer(ticker, candles) {
     distanceToZoneAtr,
     warnings,
     tradable,
+    rating,
   };
 }
 
@@ -431,12 +527,10 @@ function selectGainer(pair) {
   ui.detailMetrics.innerHTML = `
     <span>Live <b>${fmt(selected.price)}</b></span>
     <span>24h <b class="positive">${pct(selected.dayChange)}</b></span>
-    <span>VWAP ext <b>${fmt(selected.extensionAtr, 2)} ATR</b></span>
-    <span>ATR <b>${pct(selected.atrPct)}</b></span>
-    <span>Volume <b>${fmt(selected.volumeRatio, 2)}x</b></span>
-    <span>Range <b>${fmt(selected.rangeLow)} / ${fmt(selected.rangeHigh)}</b></span>
-    <span>Zone dist <b>${fmt(selected.distanceToZoneAtr, 2)} ATR</b></span>
+    <span>Spread <b class="${selected.spreadPct <= 0.08 ? "positive" : "warning"}">${pct(selected.spreadPct)}</b></span>
+    <span>Vol <b>${usd(selected.quoteVolume)}</b></span>
     <span>Risk <b class="${selected.plan.riskPct > MAX_STRUCTURAL_RISK_PCT ? "negative" : "positive"}">${pct(-selected.plan.riskPct)}</b></span>
+    <span>Rating <b>${selected.rating}/100</b></span>
   `;
   const p = selected.plan;
   const targetHtml = p.targets.map((target, index) => `
@@ -449,11 +543,36 @@ function selectGainer(pair) {
         <span>${selected.state}</span>
       </div>
       <p>${p.note}</p>
-      <div class="setup-levels">
-        <span>Entry zóna <b>${zoneText(p.entryZone)}</b></span>
-        <span>Trigger entry <b>${fmt(p.entry)}</b></span>
-        <span>Štrukturálny SL <b class="negative">${fmt(p.stop)} ${pct(movePct(p.entry, p.stop, p.side))}</b></span>
-        ${targetHtml}
+      <div class="setup-sections">
+        <section>
+          <h4>Price setup</h4>
+          <div class="setup-levels">
+            <span>Entry zóna <b>${zoneText(p.entryZone)}</b></span>
+            <span>Trigger entry <b>${fmt(p.entry)}</b></span>
+            <span>Štrukturálny SL <b class="negative">${fmt(p.stop)} ${pct(movePct(p.entry, p.stop, p.side))}</b></span>
+            ${targetHtml}
+          </div>
+        </section>
+        <section>
+          <h4>Market quality</h4>
+          <div class="setup-levels compact">
+            <span>24h gain <b class="positive">${pct(selected.dayChange)}</b></span>
+            <span>Quote volume <b>${usd(selected.quoteVolume)}</b></span>
+            <span>Spread <b class="${selected.spreadPct <= 0.08 ? "positive" : "warning"}">${pct(selected.spreadPct)}</b></span>
+            <span>Trades <b>${compactNumber(selected.tradeCount, 1)}</b></span>
+          </div>
+        </section>
+        <section>
+          <h4>Futures context</h4>
+          <div class="setup-levels compact">
+            <span>VWAP ext <b>${fmt(selected.extensionAtr, 2)} ATR</b></span>
+            <span>ATR <b>${pct(selected.atrPct)}</b></span>
+            <span>Taker buy <b>${pct(selected.takerBuyPct, 0)}</b></span>
+            <span>Range pozícia <b>${fmt(selected.rangePosition, 0)}%</b></span>
+            <span>Zone dist <b>${fmt(selected.distanceToZoneAtr, 2)} ATR</b></span>
+            <span>Range <b>${fmt(selected.rangeLow)} / ${fmt(selected.rangeHigh)}</b></span>
+          </div>
+        </section>
       </div>
       <p class="muted">Invalidácia: ${p.invalidation}</p>
       ${selected.warnings.length ? `<p class="warning">Watch filter: ${selected.warnings.join(" ")}</p>` : ""}
@@ -461,7 +580,7 @@ function selectGainer(pair) {
   `;
   ui.startPaperButton.disabled = false;
   ui.startPaperButton.textContent = selected.tradable ? "Spustiť paper trade" : "Spustiť paper watch";
-  syncChart(selected.pair);
+  syncChart(selected.pair, "main");
   renderGainers();
 }
 
@@ -476,6 +595,7 @@ function renderGainers() {
       <div class="gainer-head">
         <strong>${item.pair}</strong>
         <div class="badge-row">
+          <span class="rating-chip">${item.rating}</span>
           <span class="side-chip ${scenarioSide(item.scenario, item.plan)}">${scenarioSide(item.scenario, item.plan).toUpperCase()}</span>
           <span class="badge ${scenarioTone(item.scenario)}">${item.scenario}</span>
         </div>
@@ -484,10 +604,11 @@ function renderGainers() {
       <div class="metric-list">
         <span>Live <b>${fmt(item.price)}</b></span>
         <span>24h <b class="positive">${pct(item.dayChange)}</b></span>
-        <span>ATR <b>${pct(item.atrPct)}</b></span>
-        <span>Vol <b>${fmt(item.volumeRatio, 2)}x</b></span>
-        <span>VWAP <b>${fmt(item.extensionAtr, 2)} ATR</b></span>
+        <span>Spread <b class="${item.spreadPct <= 0.08 ? "positive" : "warning"}">${pct(item.spreadPct)}</b></span>
+        <span>Vol <b>${usd(item.quoteVolume)}</b></span>
+        <span>Entry <b>${zoneText(item.plan.entryZone)}</b></span>
         <span>Risk <b class="${item.plan.riskPct > MAX_STRUCTURAL_RISK_PCT ? "negative" : ""}">${pct(-item.plan.riskPct)}</b></span>
+        <span>TP1 <b class="positive">${pct(movePct(item.plan.entry, item.plan.targets[0], item.plan.side))}</b></span>
       </div>
     </article>
   `).join("");
@@ -506,13 +627,17 @@ async function scanLive() {
       .filter((item) => item.symbol.endsWith("USDT") && Number(item.priceChangePercent) > 0)
       .sort((a, b) => Number(b.priceChangePercent) - Number(a.priceChangePercent))
       .slice(0, 10);
-    const analyses = await Promise.allSettled(top.map(async (ticker) => analyzeGainer(ticker, await klines(ticker.symbol, "15m"))));
-    gainers = analyses.filter((result) => result.status === "fulfilled").map((result) => result.value);
+    const books = await bookTickers().catch(() => ({}));
+    const analyses = await Promise.allSettled(top.map(async (ticker) => analyzeGainer(ticker, await klines(ticker.symbol, "15m"), books[ticker.symbol])));
+    gainers = analyses
+      .filter((result) => result.status === "fulfilled")
+      .map((result) => result.value)
+      .sort((a, b) => b.rating - a.rating || b.dayChange - a.dayChange);
     const preferred = localStorage.getItem(STORE.selected);
     selected = gainers.find((item) => item.pair === preferred) || gainers[0] || null;
     renderGainers();
     if (selected) selectGainer(selected.pair);
-    ui.scanStatus.textContent = `Live scan hotový: ${gainers.length} top gainers.`;
+    ui.scanStatus.textContent = `Live scan hotový: ${gainers.length} top gainers, zoradené podľa ratingu setupu.`;
     ui.refreshStatus.textContent = new Date().toLocaleTimeString("sk-SK", { hour: "2-digit", minute: "2-digit" });
   } catch (error) {
     ui.scanStatus.textContent = `Live scan zlyhal: ${error.message}`;
@@ -554,6 +679,14 @@ function startPaper() {
     targets: p.targets.map((price, index) => ({ label: `TP${index + 1}`, price, hit: false })),
     tradable: selected.tradable,
     warnings: selected.warnings,
+    market: {
+      dayChange: selected.dayChange,
+      quoteVolume: selected.quoteVolume,
+      tradeCount: selected.tradeCount,
+      spreadPct: selected.spreadPct,
+      volumeRatio: selected.volumeRatio,
+      takerBuyPct: selected.takerBuyPct,
+    },
     createdAt,
     createdSession: sessionLabel(createdAt),
     status: "waiting",
@@ -576,41 +709,76 @@ function updateTradeTargets(trade, current) {
     if (trade.side === "long" ? current >= target.price : current <= target.price) {
       target.hit = true;
       target.hitAt = new Date().toISOString();
+      if (target.label === "TP1" && !trade.timeToTp1) trade.timeToTp1 = timeAgo(trade.openedAt, target.hitAt);
       changed = true;
     }
   });
   return changed;
 }
 
+function updateTradeTracking(trade, current) {
+  const livePct = movePct(trade.entry, current, trade.side);
+  if (!Number.isFinite(livePct)) return;
+  trade.mfe = Math.max(Number(trade.mfe) || 0, livePct);
+  trade.mae = Math.min(Number(trade.mae) || 0, livePct);
+  trade.timeInTrade = timeAgo(trade.openedAt);
+}
+
 function journalEntryFromTrade(trade, exit, reason, status = "closed") {
   const hitTargets = trade.targets.filter((target) => target.hit);
   const lastTarget = hitTargets.at(-1);
   const resultPct = lastTarget ? movePct(trade.entry, lastTarget.price, trade.side) : movePct(trade.entry, exit, trade.side);
+  const now = new Date().toISOString();
+  const openSession = trade.openedSession || trade.createdSession || sessionLabel(trade.openedAt || trade.createdAt || now);
+  const closeSession = sessionLabel(now);
   return {
     id: trade.journalId || uid("journal"),
     tradeId: trade.id,
     pair: trade.pair,
     side: trade.side,
     scenario: trade.scenario,
-    session: trade.openedSession || trade.createdSession || sessionLabel(trade.openedAt || trade.createdAt || new Date().toISOString()),
+    session: status === "closed" ? closeSession : openSession,
+    openSession,
+    closeSession: status === "closed" ? closeSession : null,
     entry: trade.entry,
     exit,
     reason,
     status,
     tpHit: hitTargets.map((target) => target.label).join(", ") || "nie",
     resultPct,
+    mfe: trade.mfe ?? 0,
+    mae: trade.mae ?? 0,
+    timeInTrade: trade.timeInTrade || timeAgo(trade.openedAt, now),
+    timeToTp1: trade.timeToTp1 || (trade.targets.find((target) => target.label === "TP1" && target.hitAt) ? timeAgo(trade.openedAt, trade.targets.find((target) => target.label === "TP1").hitAt) : "-"),
+    market: trade.market || {},
     outcome: status === "running" ? "Running" : hitTargets.length ? "Win" : reason === "Final TP" ? "Win" : "Loss",
-    closedAt: status === "closed" ? new Date().toISOString() : null,
-    updatedAt: new Date().toISOString(),
+    closedAt: status === "closed" ? now : null,
+    updatedAt: now,
   };
 }
 
 function upsertJournalEntry(entry) {
   const rows = journal();
   const index = rows.findIndex((row) => row.tradeId === entry.tradeId);
-  if (index >= 0) rows[index] = { ...rows[index], ...entry, id: rows[index].id };
+  if (index >= 0) rows[index] = { ...rows[index], ...entry, id: rows[index].id, realTrade: rows[index].realTrade || false };
   else rows.unshift(entry);
   saveJournal(rows);
+}
+
+function toggleRealJournalTrade(id) {
+  const rows = journal();
+  const nextRows = rows.map((row) => row.id === id ? { ...row, realTrade: !row.realTrade } : row);
+  saveJournal(nextRows);
+  renderJournal();
+}
+
+function journalDisplaySession(row) {
+  const open = row.openSession || row.session || "-";
+  if (row.status !== "running" && row.closedAt) {
+    const close = row.closeSession || sessionLabel(row.closedAt);
+    return open !== close ? `${open} -> ${close}` : close;
+  }
+  return open;
 }
 
 async function updatePaper() {
@@ -637,6 +805,9 @@ async function updatePaper() {
         originalStop: trade.originalStop ?? trade.stop,
         openedAt: new Date().toISOString(),
         openedSession: sessionLabel(),
+        mfe: 0,
+        mae: 0,
+        timeInTrade: "0m",
       });
     } else {
       nextWaiting.push(trade);
@@ -650,6 +821,7 @@ async function updatePaper() {
       return;
     }
     trade.live = current;
+    updateTradeTracking(trade, current);
     const targetChanged = updateTradeTargets(trade, current);
     const hitTargets = trade.targets.filter((target) => target.hit);
     if (targetChanged && hitTargets.length) {
@@ -681,6 +853,7 @@ function cancelWaiting(id) {
 function tradeCard(trade, active = false) {
   const live = Number(trade.live);
   const currentPct = Number.isFinite(live) ? movePct(trade.entry, live, trade.side) : NaN;
+  const market = trade.market || {};
   const targets = trade.targets.map((target) => {
     const hitClass = target.hit ? "tp-hit" : "";
     const cls = target.hit ? "positive" : "";
@@ -701,6 +874,22 @@ function tradeCard(trade, active = false) {
         <span class="${trade.breakEven ? "tp-hit" : ""}">SL <b class="${trade.breakEven ? "positive" : "negative"}">${fmt(trade.stop)} ${pct(movePct(trade.entry, trade.stop, trade.side))}${trade.breakEven ? " BE" : ""}</b></span>
         ${targets}
       </div>
+      <div class="trade-context">
+        <span>Spread <b>${pct(market.spreadPct)}</b></span>
+        <span>Vol <b>${usd(market.quoteVolume)}</b></span>
+        <span>Trades <b>${compactNumber(market.tradeCount, 1)}</b></span>
+        <span>Taker buy <b>${pct(market.takerBuyPct, 0)}</b></span>
+      </div>
+      ${active ? `
+        <div class="tracking-grid">
+          <span>Live PnL <b class="${currentPct >= 0 ? "positive" : "negative"}">${pct(currentPct)}</b></span>
+          <span>MFE <b class="positive">${pct(trade.mfe || 0)}</b></span>
+          <span>MAE <b class="negative">${pct(trade.mae || 0)}</b></span>
+          <span>Time <b>${trade.timeInTrade || timeAgo(trade.openedAt)}</b></span>
+          <span>TP1 time <b>${trade.timeToTp1 || "-"}</b></span>
+          <span>SL state <b class="${trade.breakEven ? "positive" : ""}">${trade.breakEven ? "BE po TP1" : "initial"}</b></span>
+        </div>
+      ` : ""}
       ${active ? "" : `<div class="trade-actions"><button class="secondary cancel-waiting" data-id="${trade.id}" type="button">Zrušiť nenaplnený</button></div>`}
     </article>
   `;
@@ -712,7 +901,7 @@ function renderPaper() {
   const pinnedPair = localStorage.getItem(STORE.paperChartPair);
   const chartTrade = state.active[0] || state.waiting[0];
   const chartPair = pinnedPair && availablePairs.has(pinnedPair) ? pinnedPair : chartTrade?.pair;
-  if (chartPair) syncChart(chartPair);
+  if (chartPair) syncChart(chartPair, "paper");
   ui.waitingMeta.textContent = `${state.waiting.length} waiting`;
   ui.activeMeta.textContent = `${state.active.length} active`;
   ui.waitingTrades.innerHTML = state.waiting.length ? state.waiting.map((trade) => tradeCard(trade, false)).join("") : `<p class="muted">Žiadne čakajúce scenáre.</p>`;
@@ -720,7 +909,7 @@ function renderPaper() {
   document.querySelectorAll(".trade-card[data-pair]").forEach((card) => {
     card.addEventListener("click", () => {
       localStorage.setItem(STORE.paperChartPair, card.dataset.pair);
-      syncChart(card.dataset.pair);
+      syncChart(card.dataset.pair, "paper");
       const found = gainers.find((item) => item.pair === card.dataset.pair);
       if (found) selectGainer(found.pair);
     });
@@ -736,8 +925,12 @@ function renderPaper() {
 function renderJournal() {
   const rows = journal();
   const closedRows = rows.filter((row) => row.status !== "running");
+  const realRows = closedRows.filter((row) => row.realTrade);
   const wins = closedRows.filter((row) => row.outcome === "Win").length;
   const avg = closedRows.length ? average(closedRows.map((row) => Number(row.resultPct) || 0)) : 0;
+  const realWins = realRows.filter((row) => row.outcome === "Win").length;
+  const realAvg = realRows.length ? average(realRows.map((row) => Number(row.resultPct) || 0)) : 0;
+  const realVsPaperAvg = realRows.length ? realAvg - avg : 0;
   const tpBeforeSl = closedRows.filter((row) => row.tpHit !== "nie" && row.reason === "SL").length;
   const byScenario = closedRows.reduce((acc, row) => {
     acc[row.scenario] = acc[row.scenario] || { total: 0, wins: 0 };
@@ -748,11 +941,14 @@ function renderJournal() {
   const best = Object.entries(byScenario).sort((a, b) => (b[1].wins / b[1].total) - (a[1].wins / a[1].total))[0];
   ui.journalMeta.textContent = `${closedRows.length} closed | ${rows.length - closedRows.length} running`;
   ui.journalSummary.innerHTML = `
-    <article><span>Winrate</span><strong>${closedRows.length ? Math.round((wins / closedRows.length) * 100) : 0}%</strong></article>
+    <article><span>Paper WR</span><strong>${closedRows.length ? Math.round((wins / closedRows.length) * 100) : 0}%</strong></article>
     <article><span>Wins / Losses</span><strong>${wins} / ${closedRows.length - wins}</strong></article>
-    <article><span>Avg real %</span><strong class="${avg >= 0 ? "positive" : "negative"}">${pct(avg)}</strong></article>
+    <article><span>Paper avg</span><strong class="${avg >= 0 ? "positive" : "negative"}">${pct(avg)}</strong></article>
     <article><span>TP pred SL</span><strong>${tpBeforeSl}</strong></article>
     <article><span>Najlepší scenár</span><strong>${best ? best[0] : "-"}</strong></article>
+    <article><span>Real marked</span><strong>${realRows.length}</strong></article>
+    <article><span>Real WR</span><strong>${realRows.length ? Math.round((realWins / realRows.length) * 100) : 0}%</strong></article>
+    <article><span>Real vs paper</span><strong class="${realVsPaperAvg >= 0 ? "positive" : "negative"}">${realRows.length ? pct(realVsPaperAvg) : "-"}</strong></article>
   `;
   const grouped = rows.reduce((acc, row) => {
     const stamp = row.closedAt || row.updatedAt || new Date().toISOString();
@@ -772,22 +968,26 @@ function renderJournal() {
           <span>${dayClosed.length} closed | ${dayRows.length - dayClosed.length} running | WR ${dayClosed.length ? Math.round((dayWins / dayClosed.length) * 100) : 0}% | avg ${pct(dayAvg)}</span>
         </div>
       </div>
-      <div class="journal-row journal-head"><span>Coin</span><span>Side</span><span>Session</span><span>Scenario</span><span>Entry</span><span>Exit</span><span>TP hit</span><span>Result</span><span>Status</span></div>
+      <div class="journal-row journal-head"><span>Coin</span><span>Side</span><span>Session flow</span><span>Scenario</span><span>Entry</span><span>Exit</span><span>TP hit</span><span>Result</span><span>Status</span><span>Real?</span></div>
       ${dayRows.map((row) => `
       <div class="journal-row ${row.status === "running" ? "running" : ""}">
         <span>${row.pair}</span>
         <span>${row.side}</span>
-        <span>${row.session || "-"}</span>
+        <span>${journalDisplaySession(row)}</span>
         <span>${row.scenario}</span>
         <span>${fmt(row.entry)}</span>
         <span>${fmt(row.exit)}</span>
         <span>${row.tpHit}</span>
         <span class="${row.resultPct >= 0 ? "positive" : "negative"}">${pct(row.resultPct)}</span>
         <span class="${row.outcome === "Win" || row.outcome === "Running" ? "positive" : "negative"}">${row.outcome} | ${row.reason}</span>
+        <span><button class="real-toggle ${row.realTrade ? "active" : ""}" data-id="${row.id}" type="button">${row.realTrade ? "Real" : "Paper"}</button></span>
       </div>
     `).join("")}
     `;
   }).join("") || `<p class="muted">Journal je zatiaľ prázdny.</p>`;
+  ui.journalTable.querySelectorAll(".real-toggle").forEach((button) => {
+    button.addEventListener("click", () => toggleRealJournalTrade(button.dataset.id));
+  });
 }
 
 function setView(view) {
@@ -801,8 +1001,9 @@ ui.startPaperButton.addEventListener("click", startPaper);
 ui.refreshCoinButton.addEventListener("click", async () => {
   if (!selected) return;
   const ticker = await json(`${API}/fapi/v1/ticker/24hr?symbol=${selected.pair}`);
-  const updated = analyzeGainer(ticker, await klines(selected.pair, "15m"));
-  gainers = gainers.map((item) => item.pair === updated.pair ? updated : item);
+  const book = await json(`${API}/fapi/v1/ticker/bookTicker?symbol=${selected.pair}`).catch(() => null);
+  const updated = analyzeGainer(ticker, await klines(selected.pair, "15m"), book);
+  gainers = gainers.map((item) => item.pair === updated.pair ? updated : item).sort((a, b) => b.rating - a.rating || b.dayChange - a.dayChange);
   selectGainer(updated.pair);
 });
 ui.clearJournalButton.addEventListener("click", () => {
