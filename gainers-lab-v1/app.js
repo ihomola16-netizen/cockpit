@@ -2,9 +2,63 @@ const API = "https://fapi.binance.com";
 const STORE = {
   paper: "gainers-lab-v1-paper",
   journal: "gainers-lab-v1-journal",
+  analysisManual: "gainers-lab-v1-analysis-manual",
   selected: "gainers-lab-v1-selected",
   paperChartPair: "gainers-lab-v1-paper-chart-pair",
 };
+
+const ANALYSIS_SEED_DATA = `2026-05-20,RONINUSDT,short,večer,Top rejection short,0.1133,0.10661,TP1,5.91,Running TP running / SL na entry,-,6.97,-0.71,33h 20m,33h 20m,Paper
+2026-05-20,ENJUSDT,short,večer -> ráno,Top rejection short,0.04956,0.0456,TP1 TP2 TP3,6.34,Win Final TP,-,7.99,-0.08,10h 9m,10h 9m,Paper
+2026-05-20,CFGUSDT,short,večer -> noc,Top rejection short,0.2896,0.2997,TP1,2.30,Win SL,-,0,0,-,-,Paper
+2026-05-20,PLAYUSDT,long,deň,Pullback long,0.1551,0.15481,TP1,2.52,Win SL,-,-,-,-,-,Paper
+2026-05-20,PROMPTUSDT,long,deň,Range after pump,0.03972,0.03956,TP1,1.63,Win SL,-,-,-,-,-,Paper
+2026-05-20,BSBUSDT,long,deň,Range low bounce,0.76419,0.82258,TP1 TP2 TP3,7.17,Win Final TP,-,-,-,-,-,Paper
+2026-05-20,BANANAS31USDT,short,deň,Too hot / top watch,0.012171,0.012447,nie,-2.27,Loss SL,-,-,-,-,-,Paper
+2026-05-20,FIGHTUSDT,long,deň,Range after pump,0.004999,0.005341,TP1 TP2 TP3,6.55,Win Final TP,-,-,-,-,-,Paper
+2026-05-20,BSBUSDT,long,deň,Range after pump,0.80828,0.80585,TP1,1.34,Win SL,-,-,-,-,-,Paper
+2026-05-20,PLAYUSDT,short,ráno -> deň,Top rejection short,0.15377,0.16027,nie,-4.23,Loss SL,-,-,-,-,-,Paper
+2026-05-20,EDENUSDT,long,ráno -> deň,Range after pump,0.07996,0.07995,TP1,3.25,Win SL,-,-,-,-,-,Paper
+2026-05-20,LITUSDT,long,ráno,Range after pump,1.1815,1.1808,TP1,2.32,Win SL,-,-,-,-,-,Paper
+2026-05-20,MUSDT,long,noc -> ráno,Range after pump,3.5072,3.4429,nie,-1.83,Loss SL,-,-,-,-,-,Paper
+2026-05-19,BROCCOLIF3BUSDT,short,večer,Top rejection short,0.004719,0.004885,nie,-3.52,Loss SL,-,0,0,-,-,Paper
+2026-05-19,MLNUSDT,long,večer -> noc,Range after pump,2.579,2.372,nie,-8.03,Loss SL,-,0,0,-,-,Paper
+2026-05-19,ONDOUSDT,long,ráno,Range after pump,0.3795,0.3697,nie,-2.58,Loss SL
+2026-05-19,IDOLUSDT,long,ráno,Range after pump,0.0261,0.0261,TP1,0.31,Win SL
+2026-05-19,EDENUSDT,short,ráno,Too hot / top watch,0.0643,0.0683,nie,-6.29,Loss SL
+2026-05-19,STARUSDT,long,ráno,Range after pump,0.1721,0.1681,nie,-2.31,Loss SL
+2026-05-19,ONTUSDT,long,ráno,Pullback long,0.0625,0.067,TP1 TP2 TP3,6.17,Win Final TP
+2026-05-18,APRUSDT,short,deň,Top rejection short,0.175,0.1644,TP1 TP2 TP3,4.71,Win Final TP
+2026-05-18,EDENUSDT,long,deň,Range after pump,0.0534,0.0533,TP1,2.21,Win SL
+2026-05-18,FHEUSDT,long,deň,Range after pump,0.0297,0.0297,TP1,0.67,Win SL
+2026-05-18,BSBUSDT,short,-,Top rejection short,0.6573,0.6573,TP1,1.44,Win SL
+2026-05-18,STARUSDT,long,-,Range after pump,0.2647,0.1511,nie,-42.93,Loss SL
+2026-05-18,AIGENSYNUSDT,short,-,Top rejection short,0.0461,0.037,TP1 TP2 TP3,14.43,Win Final TP
+2026-05-15,GPSUSDT,short,večer,Too hot / top watch,0.0087,0.0088,nie,-2.22,Loss SL
+2026-05-15,PLAYUSDT,long,deň,Range after pump,0.1041,0.1105,TP1 TP2 TP3,5.92,Win Final TP
+2026-05-15,AIGENSYNUSDT,long,večer,Range after pump,0.0421,0.0414,TP1,8.76,Win SL
+2026-05-15,SAPIENUSDT,short,večer,Top rejection short,0.1402,0.1283,TP1 TP2 TP3,3.72,Win Final TP
+2026-05-15,AIOUSDT,long,večer,Range after pump,0.1211,0.1209,TP1,2.04,Win SL
+2026-05-14,AIOUSDT,short,Top rejection short,0.1137,0.1168,nie,-2.76,Loss SL
+2026-05-14,COLLECTUSDT,short,Too hot / top watch,0.0686,0.0613,TP1 TP2 TP3,10.65,Win Final TP
+2026-05-14,COLLECTUSDT,long,Range after pump,0.0617,0.069,TP1 TP2 TP3,11.42,Win Final TP
+2026-05-14,MLNUSDT,long,Pullback long,2.911,3.624,TP1 TP2 TP3,23.48,Win Final TP
+2026-05-14,PIEVERSEUSDT,short,Top rejection short,1.0556,1.0093,TP1 TP2 TP3,3.53,Win Final TP
+2026-05-14,MLNUSDT,long,Pullback long,2.833,2.803,TP1,3.35,Win SL
+2026-05-14,AINUSDT,long,Range after pump,0.1268,0.1194,nie,-5.80,Loss SL
+2026-05-14,RIVERUSDT,long,Range after pump,7.251,7.156,TP1 TP2,5.59,Win SL
+2026-05-14,IDOLUSDT,long,Pullback long,0.0317,0.031,nie,-2.15,Loss SL
+2026-05-14,TRUTHUSDT,long,Range after pump,0.0216,0.0216,TP1,3.07,Win SL
+2026-05-14,KITEUSDT,short,Too hot / top watch,0.2269,0.2269,TP1,1.52,Win SL
+2026-05-14,QUSDT,long,Pullback long,0.0235,0.0235,TP1,2.95,Win SL
+2026-05-14,JCTUSDT,long,Range after pump,0.0045,0.0042,nie,-7.23,Loss SL
+2026-05-14,UBUSDT,short,Top rejection short,0.2085,0.192,TP1 TP2 TP3,5.26,Win Final TP
+2026-05-14,QUSDT,short,Top rejection short,0.0226,0.0253,nie,-12.11,Loss SL
+2026-05-14,LABUSDT,long,Pullback long,6.2007,5.679,nie,-8.41,Loss SL
+2026-05-13,NAORISUSDT,long,Range after pump,0.1224,0.1187,nie,-3.07,Loss SL
+2026-05-13,VELVETUSDT,long,Pullback long,0.1205,0.114,nie,-5.41,Loss SL
+2026-05-13,TRUTHUSDT,short,Top rejection short,0.0234,0.0245,TP1,1.79,Win SL
+2026-05-13,VELVETUSDT,long,Pullback long,0.1232,0.1164,nie,-5.48,Loss SL
+2026-05-13,COSUSDT,long,Pullback long,0.0018,0.0017,nie,-6.99,Loss SL`;
 
 const ui = {
   navButtons: document.querySelectorAll(".nav button"),
@@ -37,6 +91,22 @@ const ui = {
   journalMeta: document.getElementById("journalMeta"),
   journalTable: document.getElementById("journalTable"),
   clearJournalButton: document.getElementById("clearJournalButton"),
+  analysisManualInput: document.getElementById("analysisManualInput"),
+  analysisManualMeta: document.getElementById("analysisManualMeta"),
+  saveAnalysisManualButton: document.getElementById("saveAnalysisManualButton"),
+  clearAnalysisManualButton: document.getElementById("clearAnalysisManualButton"),
+  analysisMeta: document.getElementById("analysisMeta"),
+  analysisSummary: document.getElementById("analysisSummary"),
+  analysisBestList: document.getElementById("analysisBestList"),
+  analysisWorstList: document.getElementById("analysisWorstList"),
+  analysisInsights: document.getElementById("analysisInsights"),
+  analysisScenarioBars: document.getElementById("analysisScenarioBars"),
+  analysisSideBars: document.getElementById("analysisSideBars"),
+  analysisRatingBars: document.getElementById("analysisRatingBars"),
+  analysisSetupSideBars: document.getElementById("analysisSetupSideBars"),
+  analysisDayBars: document.getElementById("analysisDayBars"),
+  analysisDayMeta: document.getElementById("analysisDayMeta"),
+  analysisDays: document.getElementById("analysisDays"),
 };
 
 let gainers = [];
@@ -673,6 +743,7 @@ function startPaper() {
     pair: selected.pair,
     side: p.side,
     scenario: selected.scenario,
+    rating: selected.rating,
     entry: p.entry,
     entryZone: p.entryZone,
     stop: p.stop,
@@ -737,6 +808,7 @@ function journalEntryFromTrade(trade, exit, reason, status = "closed") {
     pair: trade.pair,
     side: trade.side,
     scenario: trade.scenario,
+    rating: trade.rating,
     session: status === "closed" ? closeSession : openSession,
     openSession,
     closeSession: status === "closed" ? closeSession : null,
@@ -779,6 +851,262 @@ function journalDisplaySession(row) {
     return open !== close ? `${open} -> ${close}` : close;
   }
   return open;
+}
+
+function dayKey(stamp = new Date().toISOString()) {
+  return new Date(stamp).toLocaleDateString("sk-SK", { year: "numeric", month: "2-digit", day: "2-digit" });
+}
+
+function isoDay(stamp = new Date().toISOString()) {
+  return new Date(stamp).toISOString().slice(0, 10);
+}
+
+function manualAnalysisText() {
+  const stored = localStorage.getItem(STORE.analysisManual);
+  return stored === null ? ANALYSIS_SEED_DATA : storeGet(STORE.analysisManual, "");
+}
+
+function saveManualAnalysis(text) {
+  storeSet(STORE.analysisManual, text || "");
+}
+
+function isRunningAnalysis(row) {
+  return String(row.status || "").toLowerCase().includes("running");
+}
+
+function hasTp1(row) {
+  return String(row.tpHit || "").toLowerCase().includes("tp1");
+}
+
+function analysisNumber(value) {
+  const parsed = Number(String(value ?? "").replace("%", "").replace(",", ".").trim());
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+function parseManualAnalysisRows(text) {
+  const scenarios = new Set([
+    "Pullback long",
+    "Top rejection short",
+    "Too hot / top watch",
+    "Range after pump",
+    "Range low bounce",
+    "Breakout retest",
+  ]);
+  return String(text || "").split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const parts = line.split(",").map((part) => part.trim());
+      const hasSession = !scenarios.has(parts[3]);
+      const offset = hasSession ? 1 : 0;
+      return {
+        source: "manual",
+        date: parts[0],
+        pair: parts[1],
+        side: (parts[2] || "").toLowerCase(),
+        session: hasSession ? parts[3] : "-",
+        scenario: parts[3 + offset],
+        entry: analysisNumber(parts[4 + offset]),
+        exit: analysisNumber(parts[5 + offset]),
+        tpHit: parts[6 + offset] || "nie",
+        resultPct: analysisNumber(parts[7 + offset]),
+        status: parts[8 + offset] || "-",
+        rating: analysisNumber(parts[9 + offset]),
+        mfe: analysisNumber(parts[10 + offset]),
+        mae: analysisNumber(parts[11 + offset]),
+        timeInTrade: parts[12 + offset] || "-",
+        timeToTp1: parts[13 + offset] || "-",
+        account: parts[14 + offset] || "Paper",
+      };
+    })
+    .filter((row) => row.date && row.pair && Number.isFinite(row.resultPct) && !isRunningAnalysis(row));
+}
+
+function journalToAnalysisRows() {
+  return journal().filter((row) => row.status !== "running").map((row) => ({
+    source: "auto",
+    date: isoDay(row.closedAt || row.updatedAt || row.openedAt || row.createdAt),
+    pair: row.pair,
+    side: row.side,
+    session: journalDisplaySession(row),
+    scenario: row.scenario,
+    entry: row.entry,
+    exit: row.exit,
+    tpHit: row.tpHit,
+    resultPct: row.resultPct,
+    status: `${row.outcome} ${row.reason}`,
+    rating: row.rating,
+    mfe: row.mfe,
+    mae: row.mae,
+    timeInTrade: row.timeInTrade || "-",
+    timeToTp1: row.timeToTp1 || "-",
+    account: row.realTrade ? "Real" : "Paper",
+  }));
+}
+
+function analysisRows() {
+  const rows = [...journalToAnalysisRows(), ...parseManualAnalysisRows(manualAnalysisText())];
+  const seen = new Set();
+  return rows
+    .sort((a, b) => (a.source === "auto" ? -1 : 1) - (b.source === "auto" ? -1 : 1))
+    .filter((row) => {
+    const key = [
+      row.pair,
+      row.side,
+      row.scenario,
+      Number(row.entry).toFixed(10),
+      Number(row.exit).toFixed(10),
+      Number(row.resultPct).toFixed(2),
+    ].join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function analysisStats(rows) {
+  const wins = rows.filter((row) => row.resultPct > 0).length;
+  const losses = rows.length - wins;
+  const total = rows.reduce((sum, row) => sum + (Number(row.resultPct) || 0), 0);
+  const mfeRows = rows.filter((row) => Number.isFinite(row.mfe));
+  const maeRows = rows.filter((row) => Number.isFinite(row.mae));
+  return {
+    count: rows.length,
+    running: 0,
+    wins,
+    losses,
+    winrate: rows.length ? (wins / rows.length) * 100 : 0,
+    avg: rows.length ? total / rows.length : 0,
+    total,
+    tp1Rate: rows.length ? (rows.filter(hasTp1).length / rows.length) * 100 : 0,
+    avgMfe: mfeRows.length ? average(mfeRows.map((row) => row.mfe)) : NaN,
+    avgMae: maeRows.length ? average(maeRows.map((row) => row.mae)) : NaN,
+  };
+}
+
+function groupRows(rows, key) {
+  return rows.reduce((acc, row) => {
+    const name = typeof key === "function" ? key(row) : row[key];
+    acc[name] = acc[name] || [];
+    acc[name].push(row);
+    return acc;
+  }, {});
+}
+
+function ratingBucket(row) {
+  if (!Number.isFinite(row.rating)) return "bez ratingu";
+  if (row.rating >= 80) return "80-100";
+  if (row.rating >= 60) return "60-79";
+  if (row.rating >= 40) return "40-59";
+  return "<40";
+}
+
+function setupSideKey(row) {
+  return `${row.scenario} | ${row.side}`;
+}
+
+function analysisBarHtml(grouped) {
+  const entries = Object.entries(grouped)
+    .map(([name, rows]) => [name, analysisStats(rows)])
+    .sort((a, b) => b[1].avg - a[1].avg);
+  const max = Math.max(1, ...entries.map(([, item]) => Math.abs(item.avg)));
+  return entries.map(([name, item]) => {
+    const width = Math.max(5, (Math.abs(item.avg) / max) * 100);
+    return `
+      <div class="analysis-bar">
+        <strong>${name}</strong>
+        <div><i style="width:${width}%; background:${item.avg >= 0 ? "var(--green)" : "var(--red)"}"></i></div>
+        <span class="${item.avg >= 0 ? "positive" : "negative"}">${pct(item.avg)}</span>
+        <small>${item.count} closed | WR ${fmt(item.winrate, 0)}% | TP1 ${fmt(item.tp1Rate, 0)}%</small>
+      </div>
+    `;
+  }).join("") || `<p class="muted">Zatiaľ žiadne dáta.</p>`;
+}
+
+function analysisListItem(row) {
+  const tone = row.resultPct >= 0 ? "positive" : "negative";
+  return `<li><strong>${row.pair}</strong> ${row.side} | ${row.scenario} | <span class="${tone}">${pct(row.resultPct)}</span></li>`;
+}
+
+function analysisInsightHtml(rows) {
+  const closed = rows.filter((row) => !isRunningAnalysis(row));
+  const byScenario = Object.entries(groupRows(closed, "scenario")).map(([name, list]) => [name, analysisStats(list)]);
+  const bestScenario = byScenario.slice().sort((a, b) => b[1].avg - a[1].avg)[0];
+  const worstScenario = byScenario.slice().sort((a, b) => a[1].avg - b[1].avg)[0];
+  const longs = analysisStats(closed.filter((row) => row.side === "long"));
+  const shorts = analysisStats(closed.filter((row) => row.side === "short"));
+  const noTpLosses = closed.filter((row) => row.resultPct < 0 && !hasTp1(row)).length;
+  return `
+    <h3>Čitateľný záver</h3>
+    <p>Najlepšie zatiaľ vyzerá <strong>${bestScenario?.[0] || "-"}</strong> s priemerom <span class="positive">${pct(bestScenario?.[1].avg || 0)}</span>. Najslabšie vyzerá <strong>${worstScenario?.[0] || "-"}</strong> s priemerom <span class="negative">${pct(worstScenario?.[1].avg || 0)}</span>.</p>
+    <p>Longy: WR ${fmt(longs.winrate, 0)}%, avg ${pct(longs.avg)}. Shorty: WR ${fmt(shorts.winrate, 0)}%, avg ${pct(shorts.avg)}.</p>
+    <p>Strát bez TP1 zásahu je <strong>${noTpLosses}</strong>. Toto je dobrý filter pre neskoršie sprísnenie setupov.</p>
+  `;
+}
+
+function analysisTradeCard(row) {
+  return `
+    <article class="analysis-trade ${isRunningAnalysis(row) ? "running" : ""}">
+      <div>
+        <strong>${row.pair}</strong>
+        <span>${row.side} | ${row.session} | ${row.source}</span>
+      </div>
+      <span class="rating-chip">${Number.isFinite(row.rating) ? row.rating : "-"}</span>
+      <span>${row.scenario}</span>
+      <span>Entry <b>${fmt(row.entry)}</b></span>
+      <span>Exit <b>${fmt(row.exit)}</b></span>
+      <span>TP <b>${row.tpHit || "nie"}</b></span>
+      <span>Result <b class="${row.resultPct >= 0 ? "positive" : "negative"}">${pct(row.resultPct)}</b></span>
+      <span>MFE/MAE <b><em class="positive">${pct(row.mfe)}</em> / <em class="negative">${pct(row.mae)}</em></b></span>
+      <span>Time <b>${row.timeInTrade || "-"}</b></span>
+      <span>${row.account || "Paper"}</span>
+    </article>
+  `;
+}
+
+function renderAnalysis() {
+  if (!ui.analysisSummary) return;
+  const manualRows = parseManualAnalysisRows(manualAnalysisText());
+  const rows = analysisRows();
+  const all = analysisStats(rows);
+  ui.analysisManualInput.value = manualAnalysisText();
+  ui.analysisManualMeta.textContent = `${manualRows.length} closed manual rows`;
+  ui.analysisMeta.textContent = `${all.count} closed rows`;
+  ui.analysisSummary.innerHTML = `
+    <article><span>WR</span><strong>${fmt(all.winrate, 0)}%</strong></article>
+    <article><span>Wins / Losses</span><strong>${all.wins} / ${all.losses}</strong></article>
+    <article><span>Avg %</span><strong class="${all.avg >= 0 ? "positive" : "negative"}">${pct(all.avg)}</strong></article>
+    <article><span>TP1 hit</span><strong>${fmt(all.tp1Rate, 0)}%</strong></article>
+    <article><span>Avg MFE</span><strong class="positive">${pct(all.avgMfe)}</strong></article>
+    <article><span>Avg MAE</span><strong class="negative">${pct(all.avgMae)}</strong></article>
+    <article><span>Running</span><strong>0</strong></article>
+    <article><span>Manual</span><strong>${manualRows.length}</strong></article>
+  `;
+  ui.analysisScenarioBars.innerHTML = analysisBarHtml(groupRows(rows, "scenario"));
+  ui.analysisSideBars.innerHTML = analysisBarHtml(groupRows(rows, "side"));
+  ui.analysisRatingBars.innerHTML = analysisBarHtml(groupRows(rows, ratingBucket));
+  ui.analysisSetupSideBars.innerHTML = analysisBarHtml(groupRows(rows, setupSideKey));
+  ui.analysisDayBars.innerHTML = analysisBarHtml(groupRows(rows, "date"));
+  const sorted = rows.slice().sort((a, b) => b.resultPct - a.resultPct);
+  ui.analysisBestList.innerHTML = sorted.slice(0, 5).map(analysisListItem).join("");
+  ui.analysisWorstList.innerHTML = sorted.slice(-5).reverse().map(analysisListItem).join("");
+  ui.analysisInsights.innerHTML = analysisInsightHtml(rows);
+  const byDay = Object.entries(groupRows(rows, "date")).sort((a, b) => b[0].localeCompare(a[0]));
+  ui.analysisDayMeta.textContent = `${byDay.length} dní`;
+  ui.analysisDays.innerHTML = byDay.map(([date, dayRows], index) => {
+    const stat = analysisStats(dayRows);
+    return `
+      <details class="analysis-day" ${index === 0 ? "open" : ""}>
+        <summary>
+          <strong>${date}</strong>
+          <span>${stat.count} closed | ${stat.running} running | WR ${fmt(stat.winrate, 0)}% | avg ${pct(stat.avg)}</span>
+        </summary>
+        <div class="analysis-trades">
+          ${dayRows.map(analysisTradeCard).join("")}
+        </div>
+      </details>
+    `;
+  }).join("") || `<p class="muted">Analysis je zatiaľ prázdna.</p>`;
 }
 
 async function updatePaper() {
@@ -951,8 +1279,7 @@ function renderJournal() {
     <article><span>Real vs paper</span><strong class="${realVsPaperAvg >= 0 ? "positive" : "negative"}">${realRows.length ? pct(realVsPaperAvg) : "-"}</strong></article>
   `;
   const grouped = rows.reduce((acc, row) => {
-    const stamp = row.closedAt || row.updatedAt || new Date().toISOString();
-    const key = new Date(stamp).toLocaleDateString("sk-SK", { year: "numeric", month: "2-digit", day: "2-digit" });
+    const key = dayKey(row.closedAt || row.updatedAt || new Date().toISOString());
     acc[key] = acc[key] || [];
     acc[key].push(row);
     return acc;
@@ -968,26 +1295,26 @@ function renderJournal() {
           <span>${dayClosed.length} closed | ${dayRows.length - dayClosed.length} running | WR ${dayClosed.length ? Math.round((dayWins / dayClosed.length) * 100) : 0}% | avg ${pct(dayAvg)}</span>
         </div>
       </div>
-      <div class="journal-row journal-head"><span>Coin</span><span>Side</span><span>Session flow</span><span>Scenario</span><span>Entry</span><span>Exit</span><span>TP hit</span><span>Result</span><span>Status</span><span>Real?</span></div>
       ${dayRows.map((row) => `
-      <div class="journal-row ${row.status === "running" ? "running" : ""}">
-        <span>${row.pair}</span>
-        <span>${row.side}</span>
-        <span>${journalDisplaySession(row)}</span>
+      <div class="journal-simple ${row.status === "running" ? "running" : ""}">
+        <div>
+          <strong>${row.pair}</strong>
+          <span>${row.side} | ${journalDisplaySession(row)}</span>
+        </div>
+        <span class="rating-chip">${Number.isFinite(row.rating) ? row.rating : "-"}</span>
         <span>${row.scenario}</span>
-        <span>${fmt(row.entry)}</span>
-        <span>${fmt(row.exit)}</span>
-        <span>${row.tpHit}</span>
+        <span>TP <b>${row.tpHit}</b></span>
         <span class="${row.resultPct >= 0 ? "positive" : "negative"}">${pct(row.resultPct)}</span>
         <span class="${row.outcome === "Win" || row.outcome === "Running" ? "positive" : "negative"}">${row.outcome} | ${row.reason}</span>
         <span><button class="real-toggle ${row.realTrade ? "active" : ""}" data-id="${row.id}" type="button">${row.realTrade ? "Real" : "Paper"}</button></span>
-      </div>
+        </div>
     `).join("")}
     `;
   }).join("") || `<p class="muted">Journal je zatiaľ prázdny.</p>`;
   ui.journalTable.querySelectorAll(".real-toggle").forEach((button) => {
     button.addEventListener("click", () => toggleRealJournalTrade(button.dataset.id));
   });
+  renderAnalysis();
 }
 
 function setView(view) {
@@ -1010,6 +1337,18 @@ ui.clearJournalButton.addEventListener("click", () => {
   saveJournal([]);
   renderJournal();
 });
+if (ui.saveAnalysisManualButton) {
+  ui.saveAnalysisManualButton.addEventListener("click", () => {
+    saveManualAnalysis(ui.analysisManualInput.value);
+    renderAnalysis();
+  });
+}
+if (ui.clearAnalysisManualButton) {
+  ui.clearAnalysisManualButton.addEventListener("click", () => {
+    saveManualAnalysis("");
+    renderAnalysis();
+  });
+}
 
 setInterval(updatePaper, 8000);
 renderPaper();

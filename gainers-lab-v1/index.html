@@ -17,6 +17,7 @@
         <button class="active" data-view="dashboard">Dashboard</button>
         <button data-view="paper">Paper Lab</button>
         <button data-view="journal">Journal</button>
+        <button data-view="analysis">Analysis</button>
       </nav>
       <div class="side-note">
         <strong>Logika</strong>
@@ -146,6 +147,115 @@
             <span id="journalMeta">0 closed</span>
           </div>
           <div class="journal-table" id="journalTable"></div>
+        </section>
+      </section>
+
+      <section class="view" data-panel="analysis">
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">Decision review</span>
+            <h1>Analysis</h1>
+          </div>
+          <p>Automatický journal + manuálne doplnené trades z práce.</p>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Manual trades</h2>
+            <span id="analysisManualMeta">0 manual rows</span>
+          </div>
+          <textarea id="analysisManualInput" class="analysis-input" spellcheck="false" placeholder="2026-05-20, ENJUSDT, short, večer -> ráno, Top rejection short, 0.04956, 0.0456, TP1 TP2 TP3, 6.34, Win Final TP, -, 7.99, -0.08, 10h 9m, 10h 9m, Paper"></textarea>
+          <div class="action-row">
+            <button class="secondary" id="saveAnalysisManualButton" type="button">Uložiť manual</button>
+            <button class="secondary danger" id="clearAnalysisManualButton" type="button">Vyčistiť manual</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Summary</h2>
+            <span id="analysisMeta">-</span>
+          </div>
+          <div class="summary-grid analysis-summary" id="analysisSummary"></div>
+        </section>
+
+        <div class="analysis-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Najlepšie / Najhoršie</h2>
+              <span>podľa reálneho %</span>
+            </div>
+            <div class="analysis-split">
+              <article class="analysis-insight">
+                <h3>Najlepšie</h3>
+                <ul id="analysisBestList"></ul>
+              </article>
+              <article class="analysis-insight">
+                <h3>Najhoršie</h3>
+                <ul id="analysisWorstList"></ul>
+              </article>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Záver</h2>
+              <span>čo zatiaľ hovoria dáta</span>
+            </div>
+            <div class="analysis-insight" id="analysisInsights"></div>
+          </section>
+        </div>
+
+        <div class="analysis-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Scenáre</h2>
+              <span>winrate a priemer</span>
+            </div>
+            <div class="analysis-bars" id="analysisScenarioBars"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Long / Short</h2>
+              <span>porovnanie smerov</span>
+            </div>
+            <div class="analysis-bars" id="analysisSideBars"></div>
+          </section>
+        </div>
+
+        <div class="analysis-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Rating buckets</h2>
+              <span>či vyšší rating outperformuje</span>
+            </div>
+            <div class="analysis-bars" id="analysisRatingBars"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Setup + side</h2>
+              <span>kombinácie smeru a scenára</span>
+            </div>
+            <div class="analysis-bars" id="analysisSetupSideBars"></div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Denný prehľad</h2>
+            <span>kde sa menil režim trhu</span>
+          </div>
+          <div class="analysis-bars" id="analysisDayBars"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Dni</h2>
+            <span id="analysisDayMeta">klikni na deň</span>
+          </div>
+          <div class="analysis-days" id="analysisDays"></div>
         </section>
       </section>
     </main>
