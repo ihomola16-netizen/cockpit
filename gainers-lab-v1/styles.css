@@ -190,6 +190,7 @@ h3 { font-size: 1.65rem; }
 }
 
 .gainer-list,
+.pump-rank-list,
 .trade-stack {
   display: grid;
   gap: 10px;
@@ -222,6 +223,32 @@ h3 { font-size: 1.65rem; }
 
 .gainer-card {
   cursor: pointer;
+}
+
+.pump-rank-row {
+  display: grid;
+  grid-template-columns: 1.35fr repeat(9, minmax(0, .72fr));
+  gap: 9px;
+  align-items: center;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255,255,255,.02);
+}
+
+.pump-rank-row > div {
+  display: grid;
+  gap: 3px;
+}
+
+.pump-rank-row span {
+  min-width: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.pump-rank-row b {
+  color: var(--text);
 }
 
 .gainer-card.active {
@@ -424,7 +451,7 @@ h3 { font-size: 1.65rem; }
 }
 
 .trade-context {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
 }
 
 .tracking-grid {
@@ -511,7 +538,7 @@ h3 { font-size: 1.65rem; }
 
 .journal-simple {
   display: grid;
-  grid-template-columns: 1.05fr .32fr 1.25fr .5fr .5fr 1fr .6fr;
+  grid-template-columns: 1.05fr .32fr 1.1fr .58fr .58fr .46fr .5fr .75fr .75fr .75fr .9fr .58fr;
   gap: 8px;
   align-items: center;
   padding: 10px;
@@ -536,6 +563,19 @@ h3 { font-size: 1.65rem; }
 }
 
 .journal-simple > div span {
+  color: var(--muted);
+}
+
+.journal-time {
+  display: grid;
+  gap: 2px;
+}
+
+.journal-time b {
+  color: var(--text);
+}
+
+.journal-time small {
   color: var(--muted);
 }
 
@@ -699,6 +739,99 @@ h3 { font-size: 1.65rem; }
   gap: 10px;
 }
 
+.analysis-periods {
+  display: grid;
+  gap: 10px;
+}
+
+.analysis-period {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255,255,255,.02);
+  overflow: hidden;
+}
+
+.analysis-period summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.analysis-period summary div {
+  display: grid;
+  gap: 3px;
+}
+
+.analysis-period summary span,
+.period-note,
+.period-days span,
+.period-detail li {
+  color: var(--muted);
+}
+
+.period-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 12px 10px;
+}
+
+.period-cards article {
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255,255,255,.025);
+}
+
+.period-cards small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.period-note {
+  margin: 0;
+  padding: 0 12px 10px;
+}
+
+.period-detail {
+  display: grid;
+  gap: 12px;
+  padding: 0 12px 12px;
+}
+
+.period-detail h4 {
+  margin: 0 0 8px;
+}
+
+.analysis-bars.compact {
+  gap: 7px;
+}
+
+.analysis-bars.compact .analysis-bar {
+  grid-template-columns: 1fr 76px;
+}
+
+.analysis-bars.compact .analysis-bar div {
+  display: none;
+}
+
+.period-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.period-days span {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255,255,255,.02);
+}
+
 .analysis-day {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -726,7 +859,7 @@ h3 { font-size: 1.65rem; }
 
 .analysis-trade {
   display: grid;
-  grid-template-columns: 1fr .32fr 1.1fr repeat(7, minmax(0, .7fr));
+  grid-template-columns: 1fr .32fr 1.1fr repeat(10, minmax(0, .65fr));
   gap: 8px;
   align-items: center;
   padding: 10px;
@@ -772,17 +905,19 @@ button:disabled {
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
-  .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .nav { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .topbar,
   .dashboard-grid,
   .paper-grid,
   .analysis-grid,
   .analysis-split,
+  .period-cards,
   .summary-grid {
     grid-template-columns: 1fr;
   }
   .journal-simple,
-  .analysis-trade {
+  .analysis-trade,
+  .pump-rank-row {
     grid-template-columns: 1fr 1fr;
   }
   .analysis-bar {
