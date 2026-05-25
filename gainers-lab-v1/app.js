@@ -4,10 +4,176 @@ const STORE = {
   journal: "gainers-lab-v1-journal",
   analysisManual: "gainers-lab-v1-analysis-manual",
   analysisManualPatch: "gainers-lab-v1-analysis-manual-patch-2026-05-22-service-pc",
+  journalImportPatch: "gainers-lab-v1-journal-import-patch-2026-05-25-service-pc",
   dayLog: "gainers-lab-v1-day-log",
   selected: "gainers-lab-v1-selected",
   paperChartPair: "gainers-lab-v1-paper-chart-pair",
 };
+
+const SERVICE_PC_JOURNAL_IMPORTS = [
+  {
+    importKey: "2026-05-25-truthusdt-short-114555-131632",
+    tradeId: "service-pc-2026-05-25-truthusdt-short-114555",
+    pair: "TRUTHUSDT",
+    side: "short",
+    scenario: "Top rejection short",
+    rating: 100,
+    entry: 0.01393,
+    exit: 0.013934,
+    reason: "SL",
+    status: "closed",
+    tpHit: "TP1",
+    resultPct: 0.37,
+    mfe: 1.26,
+    mae: -2.09,
+    timeInTrade: "1h 30m",
+    timeToTp1: "1h 4m",
+    setupMode: "trade",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-05-25T11:41:13.201Z",
+    entryTouchedPrice: 0.014011,
+    openedAt: "2026-05-25T11:45:55.891Z",
+    tp1At: "2026-05-25T12:50:10.784Z",
+    closedAt: "2026-05-25T13:16:32.481Z",
+    outcome: "Win",
+    market: { gainerRank: 9, btcMovePct: -0.15, metadata: { pump: { distanceFromHighPct: 0.73, timeSincePumpMin: 1061 }, h1: { trend: "up" }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-05-25-soonusdt-short-062255-104706",
+    tradeId: "service-pc-2026-05-25-soonusdt-short-062255",
+    pair: "SOONUSDT",
+    side: "short",
+    scenario: "Too hot / top watch",
+    rating: 56,
+    entry: 0.1799,
+    exit: 0.1848,
+    reason: "SL",
+    status: "closed",
+    tpHit: "nie",
+    resultPct: -2.72,
+    mfe: 3.67,
+    mae: -2.72,
+    timeInTrade: "4h 24m",
+    timeToTp1: "-",
+    setupMode: "watch",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-05-25T06:03:55.948Z",
+    entryTouchedPrice: 0.1811,
+    openedAt: "2026-05-25T06:22:55.972Z",
+    tp1At: null,
+    closedAt: "2026-05-25T10:47:06.194Z",
+    outcome: "Loss",
+    market: { gainerRank: 14, btcMovePct: 0.12, metadata: { pump: { distanceFromHighPct: 0.11, timeSincePumpMin: 16 }, h1: { trend: "up" }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-05-25-geniususdt-long-085156-091256",
+    tradeId: "service-pc-2026-05-25-geniususdt-long-085156",
+    pair: "GENIUSUSDT",
+    side: "long",
+    scenario: "Range after pump",
+    rating: 75,
+    entry: 0.704,
+    exit: 0.6768,
+    reason: "SL",
+    status: "closed",
+    tpHit: "nie",
+    resultPct: -3.86,
+    mfe: 0.03,
+    mae: -3.86,
+    timeInTrade: "21m",
+    timeToTp1: "-",
+    setupMode: "watch",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-05-25T08:24:53.988Z",
+    entryTouchedPrice: 0.6955,
+    openedAt: "2026-05-25T08:51:56.063Z",
+    tp1At: null,
+    closedAt: "2026-05-25T09:12:56.117Z",
+    outcome: "Loss",
+    market: { gainerRank: 15, btcMovePct: 0.20, metadata: { pump: { distanceFromHighPct: 13.62, timeSincePumpMin: 1351 }, h1: { trend: "down" }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-05-25-sportfunusdt-long-085056-094656",
+    tradeId: "service-pc-2026-05-25-sportfunusdt-long-085056",
+    pair: "SPORTFUNUSDT",
+    side: "long",
+    scenario: "Range after pump",
+    rating: 56,
+    entry: 0.06149,
+    exit: 0.06448,
+    reason: "Final TP",
+    status: "closed",
+    tpHit: "TP1, TP2, TP3",
+    resultPct: 3.36,
+    mfe: 4.86,
+    mae: 0,
+    timeInTrade: "56m",
+    timeToTp1: "1m",
+    setupMode: "watch",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-05-25T07:20:39.503Z",
+    entryTouchedPrice: 0.0601,
+    openedAt: "2026-05-25T08:50:56.028Z",
+    tp1At: "2026-05-25T08:51:56.064Z",
+    closedAt: "2026-05-25T09:46:56.133Z",
+    outcome: "Win",
+    market: { gainerRank: 6, btcMovePct: 0.35, metadata: { pump: { distanceFromHighPct: 2.36, timeSincePumpMin: 736 }, h1: { trend: "up" }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-05-25-xanusdt-short-081556-113652",
+    tradeId: "service-pc-2026-05-25-xanusdt-short-081556",
+    pair: "XANUSDT",
+    side: "short",
+    scenario: "Top rejection short",
+    rating: 100,
+    entry: 0.013266,
+    exit: 0.012619,
+    reason: "Final TP",
+    status: "closed",
+    tpHit: "TP1, TP2, TP3",
+    resultPct: 4.76,
+    mfe: 4.88,
+    mae: 0,
+    timeInTrade: "3h 20m",
+    timeToTp1: "4m",
+    setupMode: "trade",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-05-25T07:32:55.960Z",
+    entryTouchedPrice: 0.013437,
+    openedAt: "2026-05-25T08:15:56.147Z",
+    tp1At: "2026-05-25T08:20:24.965Z",
+    closedAt: "2026-05-25T11:36:52.007Z",
+    outcome: "Win",
+    market: { gainerRank: 1, btcMovePct: 0.37, metadata: { pump: { distanceFromHighPct: 3.65, timeSincePumpMin: 330 }, h1: { trend: "up" }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-05-25-fidausdt-long-063136-081928",
+    tradeId: "service-pc-2026-05-25-fidausdt-long-063136",
+    pair: "FIDAUSDT",
+    side: "long",
+    scenario: "Range after pump",
+    rating: 61,
+    entry: 0.03658,
+    exit: 0.03657,
+    reason: "SL",
+    status: "closed",
+    tpHit: "TP1, TP2",
+    resultPct: 2.06,
+    mfe: 2.73,
+    mae: -0.66,
+    timeInTrade: "1h 47m",
+    timeToTp1: "9m",
+    setupMode: "watch",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-05-25T06:27:55.947Z",
+    entryTouchedPrice: 0.03637,
+    openedAt: "2026-05-25T06:31:36.996Z",
+    tp1At: "2026-05-25T06:40:56.997Z",
+    closedAt: "2026-05-25T08:19:28.282Z",
+    outcome: "Win",
+    market: { gainerRank: 8, btcMovePct: -0.01, metadata: { pump: { distanceFromHighPct: 8.90, timeSincePumpMin: 826 }, h1: { trend: "up" }, liquidity: { bucket: "clean" } } },
+  },
+];
 
 const SERVICE_PC_ANALYSIS_ROWS = `2026-05-22,PROVEUSDT,long,deň -> ráno,Range after pump,-,-,nie,-8.93,Loss SL,15,-,-,-,-,Paper
 2026-05-22,AVNTUSDT,long,deň -> ráno,Pullback long,-,-,TP1 TP2,3.31,Win SL,99,-,-,-,-,Paper
@@ -225,6 +391,12 @@ function absMovePct(entry, price) {
   return Math.abs(((price - entry) / entry) * 100);
 }
 
+function rewardRiskRatio(entry, target, stop, side) {
+  const reward = Math.max(0, movePct(entry, target, side));
+  const risk = absMovePct(entry, stop);
+  return Number.isFinite(reward) && Number.isFinite(risk) && risk > 0 ? reward / risk : NaN;
+}
+
 function sessionLabel(stamp = new Date().toISOString()) {
   const hour = new Date(stamp).getHours();
   if (hour >= 6 && hour < 12) return "ráno";
@@ -288,6 +460,7 @@ function simplifyGainerForLog(item) {
     stop: item.plan?.stop,
     targets: item.plan?.targets || [],
     riskPct: item.plan?.riskPct,
+    tp1R: rewardRiskRatio(item.plan?.entry, item.plan?.targets?.[0], item.plan?.stop, item.plan?.side),
     quoteVolume: item.quoteVolume,
     tradeCount: item.tradeCount,
     spreadPct: item.spreadPct,
@@ -350,7 +523,7 @@ function formatDayLogEntry(snapshot) {
     lines.push(
       `#${item.gainerRank || "-"} ${item.pair} | ${item.side} | ${item.scenario} | rating ${item.rating}/100 | 24h ${fmtLogNum(item.dayChange, 2, "%")} | state ${item.state}`,
       `  price ${fmt(item.price)} | entryZone ${zoneText(item.entryZone)} | entry ${fmt(item.entry)} | SL ${fmt(item.stop)} | TP ${item.targets.map((target, index) => `TP${index + 1} ${fmt(target)}`).join(" / ")}`,
-      `  risk ${fmtLogNum(item.riskPct, 2, "%")} | spread ${fmtLogNum(item.spreadPct, 3, "%")} | volume ${usd(item.quoteVolume)} | trades ${compactNumber(item.tradeCount, 1)} | volRatio ${fmtLogNum(item.volumeRatio, 2)} | takerBuy ${fmtLogNum(item.takerBuyPct, 0, "%")}`,
+      `  risk ${fmtLogNum(item.riskPct, 2, "%")} | tp1R ${fmtLogNum(item.tp1R, 2, "R")} | spread ${fmtLogNum(item.spreadPct, 3, "%")} | volume ${usd(item.quoteVolume)} | trades ${compactNumber(item.tradeCount, 1)} | volRatio ${fmtLogNum(item.volumeRatio, 2)} | takerBuy ${fmtLogNum(item.takerBuyPct, 0, "%")}`,
       `  pump: highDist ${fmtLogNum(item.distanceFromHighPct, 2, "%")} | highDistAtr ${fmtLogNum(item.distanceFromHighAtr, 2)} | pumpAge ${durationLabel(item.timeSincePumpMin)} | pumpCandle ${fmtLogNum(item.pumpCandleMovePct, 2, "%")}`,
       `  1h: trend ${item.h1Trend || "-"} | closeStrength ${fmtLogNum(item.h1CloseStrength, 0, "%")} | rejectionHigh ${item.h1RejectionFromHigh ? "yes" : "no"} | ext ${fmtLogNum(item.h1ExtensionAtr, 2)} ATR | rangePos ${fmtLogNum(item.h1RangePosition, 0, "%")}`,
       `  liquidity: ${item.liquidityBucket || "-"} (${Number.isFinite(item.liquidityScore) ? item.liquidityScore : "-"}/100) | warnings: ${item.warnings.length ? item.warnings.join(" | ") : "-"}`
@@ -371,6 +544,7 @@ function formatTradeLogLine(trade, label) {
     `  status ${trade.status || "-"} | entry ${fmt(trade.entry)} | exit ${fmt(trade.exit)} | result ${pct(trade.resultPct)}`,
     `  openFilter ${trade.entryRule || "-"} | touchedAt ${trade.entryTouchedAt || "-"} | touchedPrice ${fmt(trade.entryTouchedPrice)}`,
     `  TP ${trade.tpHit || trade.targets?.filter((target) => target.hit).map((target) => target.label).join(" ") || "nie"} | TP1 at ${trade.tp1At || trade.targets?.find((target) => target.label === "TP1")?.hitAt || "-"} (${dateTimeLabel(trade.tp1At || trade.targets?.find((target) => target.label === "TP1")?.hitAt)}) | TP1 after ${trade.timeToTp1 || "-"} | MFE ${pct(trade.mfe)} | MAE ${pct(trade.mae)} | time ${trade.timeInTrade || "-"}`,
+    `  risk: initial ${pct(trade.riskPct)} | TP1/R ${fmtLogNum(trade.tp1R, 2, "R")}`,
     `  metadata: highDist ${fmtLogNum(pump.distanceFromHighPct, 2, "%")} | pumpAge ${durationLabel(pump.timeSincePumpMin)} | 1h ${h1.trend || "-"} | liquidity ${liquidity.bucket || "-"} | BTC move ${pct(market.btcMovePct)}`,
   ].join("\n");
 }
@@ -496,6 +670,7 @@ function buildAnalysisText(date = localIsoDay()) {
       lines.push(
         `${row.date} | ${row.pair} | ${row.side} | ${row.session} | ${row.scenario} | rating ${Number.isFinite(row.rating) ? row.rating : "-"} | ${row.tpHit || "nie"} | ${pct(row.resultPct)} | ${row.status} | ${row.account}`,
         `  entry ${fmt(row.entry)} | exit ${fmt(row.exit)} | MFE ${pct(row.mfe)} | MAE ${pct(row.mae)} | time ${row.timeInTrade || "-"} | TP1 time ${row.timeToTp1 || "-"}`,
+        `  risk ${pct(row.riskPct)} | TP1/R ${fmtLogNum(row.tp1R, 2, "R")}`,
         `  opened ${row.openedAt || "-"} (${dateTimeLabel(row.openedAt)}) | TP1 ${row.tp1At || "-"} (${dateTimeLabel(row.tp1At)}) | closed ${row.closedAt || "-"} (${dateTimeLabel(row.closedAt)})`,
         `  metadata: rank #${row.gainerRank || metadata.gainerRank || "-"} | highDist ${fmtLogNum(pump.distanceFromHighPct, 2, "%")} | pumpAge ${durationLabel(pump.timeSincePumpMin)} | 1h ${h1.trend || "-"} | liquidity ${liquidity.bucket || "-"} | BTC move ${pct(row.btcMovePct)}`
       );
@@ -1254,6 +1429,51 @@ function saveJournal(entries) {
   storeSet(STORE.journal, entries);
 }
 
+function migrateServicePcJournalImports() {
+  if (localStorage.getItem(STORE.journalImportPatch)) return;
+  const rows = journal();
+  const existingImportKeys = new Set(rows.map((row) => row.importKey).filter(Boolean));
+  const existingTradeIds = new Set(rows.map((row) => row.tradeId).filter(Boolean));
+  const existingFingerprints = new Set(rows.map((row) => [
+    row.pair,
+    row.side,
+    row.scenario,
+    row.openedAt,
+    row.closedAt,
+    Number(row.entry).toFixed(10),
+    Number(row.exit).toFixed(10),
+    Number(row.resultPct).toFixed(2),
+  ].join("|").toLowerCase()));
+  const imported = SERVICE_PC_JOURNAL_IMPORTS
+    .filter((row) => {
+      const fingerprint = [
+        row.pair,
+        row.side,
+        row.scenario,
+        row.openedAt,
+        row.closedAt,
+        Number(row.entry).toFixed(10),
+        Number(row.exit).toFixed(10),
+        Number(row.resultPct).toFixed(2),
+      ].join("|").toLowerCase();
+      return !existingImportKeys.has(row.importKey) && !existingTradeIds.has(row.tradeId) && !existingFingerprints.has(fingerprint);
+    })
+    .map((row) => ({
+      ...row,
+      id: `journal-${row.importKey}`,
+      session: sessionLabel(row.closedAt),
+      openSession: sessionLabel(row.openedAt),
+      closeSession: sessionLabel(row.closedAt),
+      openedClock: clockTime(row.openedAt),
+      tp1Clock: clockTime(row.tp1At),
+      closedClock: clockTime(row.closedAt),
+      realTrade: false,
+      updatedAt: row.closedAt,
+    }));
+  if (imported.length) saveJournal([...imported, ...rows]);
+  localStorage.setItem(STORE.journalImportPatch, "1");
+}
+
   async function startPaper() {
     if (!selected) return;
     const p = selected.plan;
@@ -1274,6 +1494,8 @@ function saveJournal(entries) {
         entryZone: p.entryZone,
         stop: p.stop,
         targets: p.targets.map((price, index) => ({ label: `TP${index + 1}`, price, hit: false })),
+        riskPct: p.riskPct,
+        tp1R: rewardRiskRatio(p.entry, p.targets[0], p.stop, p.side),
         tradable: selected.tradable,
         setupMode: selected.setupMode || "trade",
         warnings: selected.warnings,
@@ -1357,6 +1579,10 @@ function entryDecision(trade, current) {
 }
 
 function updateTradeTargets(trade, current) {
+  if (!Number.isFinite(trade.riskPct)) trade.riskPct = absMovePct(trade.entry, trade.stop);
+  if (!Number.isFinite(trade.tp1R)) {
+    trade.tp1R = rewardRiskRatio(trade.entry, trade.targets.find((target) => target.label === "TP1")?.price, trade.stop, trade.side);
+  }
   let changed = false;
   const now = new Date().toISOString();
   trade.targets.forEach((target) => {
@@ -1416,6 +1642,8 @@ function journalEntryFromTrade(trade, exit, reason, status = "closed") {
     resultPct,
     mfe: trade.mfe ?? 0,
     mae: trade.mae ?? 0,
+    riskPct: trade.riskPct ?? absMovePct(trade.entry, trade.stop),
+    tp1R: trade.tp1R ?? rewardRiskRatio(trade.entry, trade.targets.find((target) => target.label === "TP1")?.price, trade.stop, trade.side),
     timeInTrade: trade.timeInTrade || timeAgo(trade.openedAt, now),
     timeToTp1: trade.timeToTp1 || (trade.targets.find((target) => target.label === "TP1" && target.hitAt) ? timeAgo(trade.openedAt, trade.targets.find((target) => target.label === "TP1").hitAt) : "-"),
     setupMode: trade.setupMode || "trade",
@@ -1561,6 +1789,8 @@ function journalToAnalysisRows() {
     rating: row.rating,
     mfe: row.mfe,
     mae: row.mae,
+    riskPct: row.riskPct,
+    tp1R: row.tp1R,
     timeInTrade: row.timeInTrade || "-",
     timeToTp1: row.timeToTp1 || "-",
     openedAt: row.openedAt,
@@ -2183,6 +2413,7 @@ if (ui.clearDayLogButton) {
 }
 
 migrateAnalysisManualRows();
+migrateServicePcJournalImports();
 setInterval(updatePaper, 8000);
 setInterval(scanLive, AUTO_SCAN_MS);
 renderPaper();
