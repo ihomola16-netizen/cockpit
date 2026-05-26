@@ -307,6 +307,8 @@ let selected = null;
 const MAX_STRUCTURAL_RISK_PCT = 7;
 const AUTO_SCAN_MS = 10 * 60 * 1000;
 const ENTRY_CONFIRM_ATR = 0.12;
+const PAPER_CATCHUP_GAP_MS = 90 * 1000;
+const PAPER_CATCHUP_MAX_REQUESTS = 3;
 
 function uid(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -727,6 +729,7 @@ async function klines(pair, interval = "15m", limit = 160) {
   const rows = await json(`${API}/fapi/v1/klines?symbol=${pair}&interval=${interval}&limit=${limit}`);
   return rows.map((row) => ({
     time: row[0],
+    closeTime: row[6],
     open: Number(row[1]),
     high: Number(row[2]),
     low: Number(row[3]),
@@ -734,6 +737,30 @@ async function klines(pair, interval = "15m", limit = 160) {
     volume: Number(row[5]),
     takerBuyVolume: Number(row[9]),
   }));
+}
+
+async function klinesRange(pair, interval = "1m", startTime = Date.now() - 60 * 60 * 1000, endTime = Date.now()) {
+  const out = [];
+  let cursor = Math.max(0, Number(startTime) || 0);
+  const stop = Number(endTime) || Date.now();
+  for (let request = 0; request < PAPER_CATCHUP_MAX_REQUESTS && cursor < stop; request += 1) {
+    const rows = await json(`${API}/fapi/v1/klines?symbol=${pair}&interval=${interval}&startTime=${Math.floor(cursor)}&endTime=${Math.floor(stop)}&limit=1500`);
+    if (!rows.length) break;
+    rows.forEach((row) => out.push({
+      time: row[0],
+      closeTime: row[6],
+      open: Number(row[1]),
+      high: Number(row[2]),
+      low: Number(row[3]),
+      close: Number(row[4]),
+      volume: Number(row[5]),
+      takerBuyVolume: Number(row[9]),
+    }));
+    const next = rows.at(-1)[6] + 1;
+    if (next <= cursor) break;
+    cursor = next;
+  }
+  return out;
 }
 
 async function price(pair) {
@@ -1517,6 +1544,7 @@ function migrateServicePcJournalImports() {
         createdSession: sessionLabel(createdAt),
         status: "waiting",
         entryRule: "touch-and-confirm",
+        lastCheckedAt: createdAt,
       });
       savePaper(state);
       renderPaper();
@@ -1578,20 +1606,19 @@ function entryDecision(trade, current) {
   return current <= from - confirm ? "open" : "wait";
 }
 
-function updateTradeTargets(trade, current) {
+function updateTradeTargets(trade, current, stamp = new Date().toISOString()) {
   if (!Number.isFinite(trade.riskPct)) trade.riskPct = absMovePct(trade.entry, trade.stop);
   if (!Number.isFinite(trade.tp1R)) {
     trade.tp1R = rewardRiskRatio(trade.entry, trade.targets.find((target) => target.label === "TP1")?.price, trade.stop, trade.side);
   }
   let changed = false;
-  const now = new Date().toISOString();
   trade.targets.forEach((target) => {
     if (target.hit) return;
     if (trade.side === "long" ? current >= target.price : current <= target.price) {
       target.hit = true;
-      target.hitAt = now;
+      target.hitAt = stamp;
       if (target.label === "TP1") {
-        trade.tp1At = trade.tp1At || now;
+        trade.tp1At = trade.tp1At || stamp;
         if (!trade.timeToTp1) trade.timeToTp1 = timeAgo(trade.openedAt, target.hitAt);
       }
       changed = true;
@@ -1600,12 +1627,12 @@ function updateTradeTargets(trade, current) {
   return changed;
 }
 
-function updateTradeTracking(trade, current) {
+function updateTradeTracking(trade, current, stamp = new Date().toISOString()) {
   const livePct = movePct(trade.entry, current, trade.side);
   if (!Number.isFinite(livePct)) return;
   trade.mfe = Math.max(Number(trade.mfe) || 0, livePct);
   trade.mae = Math.min(Number(trade.mae) || 0, livePct);
-  trade.timeInTrade = timeAgo(trade.openedAt);
+  trade.timeInTrade = timeAgo(trade.openedAt, stamp);
 }
 
 function updateTradeBtcContext(trade, btcPrice) {
@@ -1617,11 +1644,61 @@ function updateTradeBtcContext(trade, btcPrice) {
   trade.market.btcUpdatedAt = new Date().toISOString();
 }
 
-function journalEntryFromTrade(trade, exit, reason, status = "closed") {
+function tradeFavorablePrice(trade, candle) {
+  return trade.side === "long" ? candle.high : candle.low;
+}
+
+function tradeAdversePrice(trade, candle) {
+  return trade.side === "long" ? candle.low : candle.high;
+}
+
+function tradeStopHit(trade, price) {
+  return trade.side === "long" ? price <= trade.stop : price >= trade.stop;
+}
+
+function candleStamp(candle) {
+  return new Date(candle.closeTime || candle.time || Date.now()).toISOString();
+}
+
+function processTradeCandle(trade, candle) {
+  const stamp = candleStamp(candle);
+  const favorable = tradeFavorablePrice(trade, candle);
+  const adverse = tradeAdversePrice(trade, candle);
+  updateTradeTracking(trade, favorable, stamp);
+  updateTradeTracking(trade, adverse, stamp);
+
+  const stopBeforeTarget = tradeStopHit(trade, adverse) && !trade.targets.some((target) => target.hit);
+  const wouldHitTarget = trade.targets.some((target) => !target.hit && (trade.side === "long" ? favorable >= target.price : favorable <= target.price));
+  if (stopBeforeTarget && !wouldHitTarget) {
+    upsertJournalEntry(journalEntryFromTrade(trade, trade.stop, "SL", "closed", stamp));
+    return "closed";
+  }
+
+  const targetChanged = updateTradeTargets(trade, favorable, stamp);
+  const hitTargets = trade.targets.filter((target) => target.hit);
+  if (targetChanged && hitTargets.length) {
+    trade.stop = trade.entry;
+    trade.breakEven = true;
+    upsertJournalEntry(journalEntryFromTrade(trade, hitTargets.at(-1).price, "TP running / SL na entry", "running", stamp));
+  }
+
+  const hitStop = tradeStopHit(trade, adverse);
+  const finalTarget = trade.targets.at(-1);
+  const hitFinal = finalTarget?.hit;
+  if (hitStop || hitFinal) {
+    upsertJournalEntry(journalEntryFromTrade(trade, hitFinal ? finalTarget.price : trade.stop, hitFinal ? "Final TP" : "SL", "closed", stamp));
+    return "closed";
+  }
+
+  trade.lastCheckedAt = stamp;
+  return "active";
+}
+
+function journalEntryFromTrade(trade, exit, reason, status = "closed", stamp = new Date().toISOString()) {
   const hitTargets = trade.targets.filter((target) => target.hit);
   const lastTarget = hitTargets.at(-1);
   const resultPct = lastTarget ? movePct(trade.entry, lastTarget.price, trade.side) : movePct(trade.entry, exit, trade.side);
-  const now = new Date().toISOString();
+  const now = stamp || new Date().toISOString();
   const openSession = trade.openedSession || trade.createdSession || sessionLabel(trade.openedAt || trade.createdAt || now);
   const closeSession = sessionLabel(now);
   return {
@@ -2128,10 +2205,25 @@ function renderAnalysis() {
 async function updatePaper() {
   const state = paperState();
   if (!state.waiting.length && !state.active.length) return;
+  const now = new Date().toISOString();
   const pairs = [...new Set([...state.waiting, ...state.active].map((trade) => trade.pair))];
   if (state.active.length) pairs.push("BTCUSDT");
   const priceMap = {};
   await Promise.allSettled(pairs.map(async (pair) => { priceMap[pair] = await price(pair); }));
+  const catchupMap = {};
+  const catchupPairs = [...new Set(state.active
+    .filter((trade) => {
+      const last = new Date(trade.lastCheckedAt || trade.openedAt || trade.createdAt || now).getTime();
+      return Number.isFinite(last) && Date.now() - last > PAPER_CATCHUP_GAP_MS;
+    })
+    .map((trade) => trade.pair))];
+  await Promise.allSettled(catchupPairs.map(async (pair) => {
+    const start = Math.min(...state.active
+      .filter((trade) => trade.pair === pair)
+      .map((trade) => new Date(trade.lastCheckedAt || trade.openedAt || trade.createdAt || now).getTime())
+      .filter(Number.isFinite));
+    catchupMap[pair] = await klinesRange(pair, "1m", Math.max(0, start - 60 * 1000), Date.now());
+  }));
   const nextWaiting = [];
   const nextActive = [];
 
@@ -2143,19 +2235,22 @@ async function updatePaper() {
     }
     trade.live = current;
     if (entryDecision(trade, current) === "open") {
+      const openedAt = new Date().toISOString();
       nextActive.push({
         ...trade,
         status: "active",
         entry: current,
         originalStop: trade.originalStop ?? trade.stop,
-        openedAt: new Date().toISOString(),
+        openedAt,
         openedSession: sessionLabel(),
         openedPrice: current,
         mfe: 0,
         mae: 0,
         timeInTrade: "0m",
+        lastCheckedAt: openedAt,
       });
     } else {
+      trade.lastCheckedAt = now;
       nextWaiting.push(trade);
     }
   });
@@ -2168,6 +2263,20 @@ async function updatePaper() {
     }
     trade.live = current;
     updateTradeBtcContext(trade, priceMap.BTCUSDT);
+    const lastChecked = new Date(trade.lastCheckedAt || trade.openedAt || trade.createdAt || now).getTime();
+    const catchupCandles = (catchupMap[trade.pair] || [])
+      .filter((candle) => (candle.closeTime || candle.time) > lastChecked)
+      .sort((a, b) => (a.closeTime || a.time) - (b.closeTime || b.time));
+    let closedByCatchup = false;
+    if (catchupCandles.length) {
+      for (const candle of catchupCandles) {
+        if (processTradeCandle(trade, candle) === "closed") {
+          closedByCatchup = true;
+          break;
+        }
+      }
+    }
+    if (closedByCatchup) return;
     updateTradeTracking(trade, current);
     const targetChanged = updateTradeTargets(trade, current);
     const hitTargets = trade.targets.filter((target) => target.hit);
@@ -2182,6 +2291,7 @@ async function updatePaper() {
     if (hitStop || hitFinal) {
       upsertJournalEntry(journalEntryFromTrade(trade, current, hitFinal ? "Final TP" : "SL"));
     } else {
+      trade.lastCheckedAt = now;
       nextActive.push(trade);
     }
   });
