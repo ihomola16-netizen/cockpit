@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gainers Lab v1</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20260524-2030">
 </head>
 <body>
   <div class="app-shell">
@@ -197,11 +197,11 @@
             <h2>Workday export</h2>
             <span id="dayLogMeta">0 snapshots dnes</span>
           </div>
-          <p class="muted">Počas dňa sa tu ticho zbierajú TOP 15 snapshoty z live scanov. Na konci šichty exportuj jeden texták a pošli ho sem spolu s výsledkami obchodov.</p>
+          <p class="muted">Počas dňa sa tu ticho zbierajú TOP 15 snapshoty z live scanov. Keď budem potrebovať všetky dáta z Analysis, exportuj full data súbor.</p>
           <div class="action-row">
             <button class="secondary" id="exportDayLogButton" type="button">Export day log</button>
-            <button class="secondary" id="exportAnalysisTextButton" type="button">Export analysis text</button>
-            <button class="secondary" id="exportAnalysisJsonButton" type="button">Export full JSON</button>
+            <button class="secondary" id="exportAnalysisTextButton" type="button">Export full analysis TXT</button>
+            <button class="primary" id="exportAnalysisJsonButton" type="button">Export full data JSON</button>
             <button class="secondary danger" id="clearDayLogButton" type="button">Vyčistiť dnešný log</button>
           </div>
         </section>
@@ -260,48 +260,48 @@
         </div>
 
         <div class="analysis-grid">
-          <section class="panel">
-            <div class="panel-head">
+          <details class="panel analysis-toggle-panel">
+            <summary class="panel-head">
               <h2>Scenáre</h2>
               <span>winrate a priemer</span>
-            </div>
+            </summary>
             <div class="analysis-bars" id="analysisScenarioBars"></div>
-          </section>
+          </details>
 
-          <section class="panel">
-            <div class="panel-head">
+          <details class="panel analysis-toggle-panel">
+            <summary class="panel-head">
               <h2>Long / Short</h2>
               <span>porovnanie smerov</span>
-            </div>
+            </summary>
             <div class="analysis-bars" id="analysisSideBars"></div>
-          </section>
+          </details>
         </div>
 
         <div class="analysis-grid">
-          <section class="panel">
-            <div class="panel-head">
+          <details class="panel analysis-toggle-panel">
+            <summary class="panel-head">
               <h2>Rating buckets</h2>
               <span>či vyšší rating outperformuje</span>
-            </div>
+            </summary>
             <div class="analysis-bars" id="analysisRatingBars"></div>
-          </section>
+          </details>
 
-          <section class="panel">
-            <div class="panel-head">
+          <details class="panel analysis-toggle-panel">
+            <summary class="panel-head">
               <h2>Setup + side</h2>
               <span>kombinácie smeru a scenára</span>
-            </div>
+            </summary>
             <div class="analysis-bars" id="analysisSetupSideBars"></div>
-          </section>
+          </details>
         </div>
 
-        <section class="panel">
-          <div class="panel-head">
+        <details class="panel analysis-toggle-panel">
+          <summary class="panel-head">
             <h2>Denný prehľad</h2>
             <span>kde sa menil režim trhu</span>
-          </div>
+          </summary>
           <div class="analysis-bars" id="analysisDayBars"></div>
-        </section>
+        </details>
 
         <section class="panel">
           <div class="panel-head">
@@ -314,6 +314,6 @@
     </main>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=20260524-2030"></script>
 </body>
 </html>

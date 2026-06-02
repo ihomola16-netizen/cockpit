@@ -11,6 +11,9 @@ const STORE = {
   journalImportPatch20260529: "gainers-lab-v1-journal-import-patch-2026-05-29-service-pc",
   journalImportPatch20260530: "gainers-lab-v1-journal-import-patch-2026-05-30-mobile",
   journalImportPatch20260531: "gainers-lab-v1-journal-import-patch-2026-05-31-mobile",
+  journalImportPatch20260601: "gainers-lab-v1-journal-import-patch-2026-06-01-mobile",
+  journalImportPatch20260601Work: "gainers-lab-v1-journal-import-patch-2026-06-01-work",
+  journalImportPatch20260602Work: "gainers-lab-v1-journal-import-patch-2026-06-02-work",
   journalConsistencyPatch20260527: "gainers-lab-v1-journal-consistency-patch-2026-05-27",
   journalTpSlPatch20260527: "gainers-lab-v1-journal-tp-sl-patch-2026-05-27",
   journalTpSlPatch20260528: "gainers-lab-v1-journal-tp-sl-patch-2026-05-28",
@@ -1741,6 +1744,566 @@ const MOBILE_JOURNAL_IMPORTS_20260531 = [
   },
 ];
 
+const MOBILE_JOURNAL_IMPORTS_20260601 = [
+  {
+    importKey: "2026-06-01-gunusdt-short-151109-074459",
+    tradeId: "mobile-2026-06-01-gunusdt-short-151109",
+    pair: "GUNUSDT",
+    side: "short",
+    scenario: "Top rejection short",
+    rating: 100,
+    entry: 0.00861,
+    exit: 0.00741,
+    reason: "Final TP",
+    status: "closed",
+    tpHit: "TP1, TP2, TP3",
+    resultPct: 13.94,
+    mfe: 13.94,
+    mae: -1.05,
+    riskPct: 4.95,
+    tp1R: 1.60,
+    timeInTrade: "16h 33m",
+    timeToTp1: "1h 53m",
+    setupMode: "trade",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-05-31T15:00:31.777Z",
+    entryTouchedPrice: 0.00878,
+    openedAt: "2026-05-31T15:11:09.276Z",
+    tp1At: "2026-05-31T17:04:59.999Z",
+    closedAt: "2026-06-01T07:44:59.999Z",
+    outcome: "Win",
+    market: { gainerRank: 6, btcMovePct: -3.06, metadata: { pump: { distanceFromHighPct: 1.26, timeSincePumpMin: 16 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-05-31-playusdt-short-110400-215700",
+    tradeId: "mobile-2026-05-31-playusdt-short-110400",
+    pair: "PLAYUSDT",
+    side: "short",
+    scenario: "Top rejection short",
+    rating: 100,
+    entry: 0.12123,
+    exit: 0.13176,
+    reason: "SL",
+    status: "closed",
+    tpHit: "nie",
+    resultPct: -8.68,
+    mfe: 0,
+    mae: -8.68,
+    riskPct: 8.68,
+    tp1R: null,
+    timeInTrade: "10h 53m",
+    timeToTp1: "-",
+    setupMode: "trade",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: null,
+    entryTouchedPrice: null,
+    openedAt: "2026-05-31T11:04:00.000Z",
+    tp1At: null,
+    closedAt: "2026-05-31T21:57:00.000Z",
+    outcome: "Loss",
+    market: { metadata: { source: "phone screenshot", pump: {}, higherTimeframe: { h1: {} }, liquidity: {} } },
+  },
+];
+
+const WORK_JOURNAL_IMPORTS_20260601 = [
+  {
+    importKey: "2026-06-01-epicusdt-long-133210-133659",
+    tradeId: "work-2026-06-01-epicusdt-long-133210",
+    pair: "EPICUSDT",
+    side: "long",
+    scenario: "Range after pump",
+    rating: 84,
+    entry: 0.3135,
+    exit: 0.3135,
+    reason: "SL",
+    status: "closed",
+    tpHit: "TP1",
+    resultPct: 0.80,
+    mfe: 1.75,
+    mae: -0.77,
+    riskPct: 4.43,
+    tp1R: 0.18,
+    timeInTrade: "4m",
+    timeToTp1: "2m",
+    setupMode: "watch",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-06-01T13:19:59.258Z",
+    entryTouchedPrice: 0.3057,
+    openedAt: "2026-06-01T13:32:10.834Z",
+    tp1At: "2026-06-01T13:34:10.864Z",
+    closedAt: "2026-06-01T13:36:59.999Z",
+    outcome: "Win",
+    market: { gainerRank: 6, btcMovePct: 0, metadata: { pump: { distanceFromHighPct: 14.65, timeSincePumpMin: 378 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-06-01-cncoin-long-103610-105859",
+    tradeId: "work-2026-06-01-cncoin-long-103610",
+    pair: "币安人生USDT",
+    side: "long",
+    scenario: "Range after pump",
+    rating: 63,
+    entry: 0.64129,
+    exit: 0.62024,
+    reason: "SL",
+    status: "closed",
+    tpHit: "nie",
+    resultPct: -3.28,
+    mfe: 0.26,
+    mae: -4.10,
+    riskPct: 3.28,
+    tp1R: 0.12,
+    timeInTrade: "22m",
+    timeToTp1: "-",
+    setupMode: "watch",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-06-01T10:34:10.616Z",
+    entryTouchedPrice: 0.63734,
+    openedAt: "2026-06-01T10:36:10.627Z",
+    tp1At: null,
+    closedAt: "2026-06-01T10:58:59.999Z",
+    outcome: "Loss",
+    market: { gainerRank: 7, btcMovePct: -0.59, metadata: { pump: { distanceFromHighPct: 3.49, timeSincePumpMin: 38 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-06-01-homeusdt-long-095743-103710",
+    tradeId: "work-2026-06-01-homeusdt-long-095743",
+    pair: "HOMEUSDT",
+    side: "long",
+    scenario: "Range after pump",
+    rating: 89,
+    entry: 0.038977,
+    exit: 0.038977,
+    reason: "SL",
+    status: "closed",
+    tpHit: "TP2",
+    resultPct: 0.78,
+    mfe: 1.23,
+    mae: -1.39,
+    riskPct: 5.47,
+    tp1R: 0.34,
+    timeInTrade: "39m",
+    timeToTp1: "-",
+    setupMode: "watch",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-06-01T09:07:18.940Z",
+    entryTouchedPrice: 0.037741,
+    openedAt: "2026-06-01T09:57:43.580Z",
+    tp1At: null,
+    closedAt: "2026-06-01T10:37:10.623Z",
+    outcome: "Win",
+    market: { gainerRank: 12, btcMovePct: -0.43, metadata: { pump: { distanceFromHighPct: 22.22, timeSincePumpMin: 1433 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-06-01-xnyusdt-short-055910-081639",
+    tradeId: "work-2026-06-01-xnyusdt-short-055910",
+    pair: "XNYUSDT",
+    side: "short",
+    scenario: "Top rejection short",
+    rating: 100,
+    entry: 0.007071,
+    exit: 0.007071,
+    reason: "SL",
+    status: "closed",
+    tpHit: "TP1",
+    resultPct: 0.93,
+    mfe: 2.50,
+    mae: -2.31,
+    riskPct: 4.34,
+    tp1R: 0.22,
+    timeInTrade: "2h 17m",
+    timeToTp1: "1h 35m",
+    setupMode: "trade",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-06-01T05:42:14.778Z",
+    entryTouchedPrice: 0.007212,
+    openedAt: "2026-06-01T05:59:10.435Z",
+    tp1At: "2026-06-01T07:34:10.517Z",
+    closedAt: "2026-06-01T08:16:39.553Z",
+    outcome: "Win",
+    market: { gainerRank: 10, btcMovePct: -0.79, metadata: { pump: { distanceFromHighPct: 1.03, timeSincePumpMin: 233 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-06-01-xlmusdt-short-071038-074742",
+    tradeId: "work-2026-06-01-xlmusdt-short-071038",
+    pair: "XLMUSDT",
+    side: "short",
+    scenario: "Top rejection short",
+    rating: 100,
+    entry: 0.26329,
+    exit: 0.25776,
+    reason: "Final TP",
+    status: "closed",
+    tpHit: "TP1, TP2, TP3",
+    resultPct: 2.10,
+    mfe: 2.17,
+    mae: -1.34,
+    riskPct: 2.71,
+    tp1R: 0.27,
+    timeInTrade: "37m",
+    timeToTp1: "22m",
+    setupMode: "trade",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-06-01T06:59:42.836Z",
+    entryTouchedPrice: 0.26827,
+    openedAt: "2026-06-01T07:10:38.836Z",
+    tp1At: "2026-06-01T07:33:10.523Z",
+    closedAt: "2026-06-01T07:47:42.895Z",
+    outcome: "Win",
+    market: { gainerRank: 14, btcMovePct: -0.41, metadata: { pump: { distanceFromHighPct: 1.04, timeSincePumpMin: 323 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-06-01-acuusdt-short-072259-073622",
+    tradeId: "work-2026-06-01-acuusdt-short-072259",
+    pair: "ACUUSDT",
+    side: "short",
+    scenario: "Top rejection short",
+    rating: 100,
+    entry: 0.09744,
+    exit: 0.093733,
+    reason: "Final TP",
+    status: "closed",
+    tpHit: "TP1, TP2, TP3",
+    resultPct: 3.80,
+    mfe: 3.86,
+    mae: -0.05,
+    riskPct: 3.37,
+    tp1R: 0.30,
+    timeInTrade: "13m",
+    timeToTp1: "0m",
+    setupMode: "trade",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-06-01T07:10:10.476Z",
+    entryTouchedPrice: 0.09869,
+    openedAt: "2026-06-01T07:22:59.983Z",
+    tp1At: "2026-06-01T07:23:58.852Z",
+    closedAt: "2026-06-01T07:36:22.869Z",
+    outcome: "Win",
+    market: { gainerRank: 12, btcMovePct: -0.36, metadata: { pump: { distanceFromHighPct: 0.85, timeSincePumpMin: 757 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-06-01-homeusdt-short-061110-065810",
+    tradeId: "work-2026-06-01-homeusdt-short-061110",
+    pair: "HOMEUSDT",
+    side: "short",
+    scenario: "Top rejection short",
+    rating: 100,
+    entry: 0.042223,
+    exit: 0.038322,
+    reason: "Final TP",
+    status: "closed",
+    tpHit: "TP1, TP2, TP3",
+    resultPct: 9.24,
+    mfe: 11.74,
+    mae: -0.45,
+    riskPct: 7.17,
+    tp1R: 0.59,
+    timeInTrade: "47m",
+    timeToTp1: "20m",
+    setupMode: "trade",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-06-01T05:49:02.788Z",
+    entryTouchedPrice: 0.043262,
+    openedAt: "2026-06-01T06:11:10.469Z",
+    tp1At: "2026-06-01T06:31:10.478Z",
+    closedAt: "2026-06-01T06:58:10.500Z",
+    outcome: "Win",
+    market: { gainerRank: 5, btcMovePct: -0.35, metadata: { pump: { distanceFromHighPct: 3.57, timeSincePumpMin: 1313 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+];
+
+const WORK_JOURNAL_IMPORTS_20260602 = [
+  {
+    importKey: "2026-06-02-flncusdt-short-142649-143249",
+    tradeId: "work-2026-06-02-flncusdt-short-142649",
+    pair: "FLNCUSDT",
+    side: "short",
+    scenario: "Top rejection short",
+    rating: 100,
+    entry: 27.58,
+    exit: 28.4517,
+    reason: "SL",
+    status: "closed",
+    tpHit: "nie",
+    resultPct: -3.16,
+    mfe: 0,
+    mae: -3.26,
+    riskPct: 3.16,
+    tp1R: 1,
+    timeInTrade: "6m",
+    timeToTp1: "-",
+    setupMode: "trade",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-06-02T14:21:04.407Z",
+    entryTouchedPrice: 28.19,
+    openedAt: "2026-06-02T14:26:49.399Z",
+    tp1At: null,
+    closedAt: "2026-06-02T14:32:49.401Z",
+    outcome: "Loss",
+    market: { gainerRank: 14, btcMovePct: -1.31, metadata: { pump: { distanceFromHighPct: 1.22, timeSincePumpMin: 20 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-06-02-uselessusdt-short-142404-142625",
+    tradeId: "work-2026-06-02-uselessusdt-short-142404",
+    pair: "USELESSUSDT",
+    side: "short",
+    scenario: "Top rejection short",
+    rating: 100,
+    entry: 0.09818,
+    exit: 0.09818,
+    reason: "SL",
+    status: "closed",
+    tpHit: "TP1",
+    resultPct: 0.05,
+    mfe: 0.45,
+    mae: -1.03,
+    riskPct: 5.05,
+    tp1R: 0.01,
+    timeInTrade: "2m",
+    timeToTp1: "2m",
+    setupMode: "trade",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-06-02T14:03:27.574Z",
+    entryTouchedPrice: 0.10083,
+    openedAt: "2026-06-02T14:24:04.403Z",
+    tp1At: "2026-06-02T14:26:17.394Z",
+    closedAt: "2026-06-02T14:26:25.404Z",
+    outcome: "Win",
+    market: { gainerRank: 7, btcMovePct: -1.36, metadata: { pump: { distanceFromHighPct: 0.67, timeSincePumpMin: 395 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-06-02-ususdt-long-130329-130409",
+    tradeId: "work-2026-06-02-ususdt-long-130329",
+    pair: "USUSDT",
+    side: "long",
+    scenario: "Range after pump",
+    rating: 69,
+    entry: 0.011457,
+    exit: 0.011457,
+    reason: "SL",
+    status: "closed",
+    tpHit: "TP1",
+    resultPct: 0.90,
+    mfe: 1.33,
+    mae: -0.47,
+    riskPct: 4.81,
+    tp1R: 0.19,
+    timeInTrade: "0m",
+    timeToTp1: "0m",
+    setupMode: "watch",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-06-02T11:58:04.333Z",
+    entryTouchedPrice: 0.011295,
+    openedAt: "2026-06-02T13:03:29.384Z",
+    tp1At: "2026-06-02T13:03:45.378Z",
+    closedAt: "2026-06-02T13:04:09.385Z",
+    outcome: "Win",
+    market: { gainerRank: 1, btcMovePct: -0.69, metadata: { pump: { distanceFromHighPct: 5.42, timeSincePumpMin: 413 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-06-02-esportsusdt-long-111016-115804",
+    tradeId: "work-2026-06-02-esportsusdt-long-111016",
+    pair: "ESPORTSUSDT",
+    side: "long",
+    scenario: "Range after pump",
+    rating: 66,
+    entry: 0.053,
+    exit: 0.05135,
+    reason: "SL",
+    status: "closed",
+    tpHit: "nie",
+    resultPct: -3.11,
+    mfe: 0.75,
+    mae: -6.60,
+    riskPct: 3.11,
+    tp1R: 4.92,
+    timeInTrade: "47m",
+    timeToTp1: "-",
+    setupMode: "watch",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-06-02T11:01:04.278Z",
+    entryTouchedPrice: 0.0525,
+    openedAt: "2026-06-02T11:10:16.640Z",
+    tp1At: null,
+    closedAt: "2026-06-02T11:58:04.335Z",
+    outcome: "Loss",
+    market: { gainerRank: 1, btcMovePct: 0.03, metadata: { pump: { distanceFromHighPct: 29.99, timeSincePumpMin: 1038 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-06-02-stgusdt-long-063904-084759",
+    tradeId: "work-2026-06-02-stgusdt-long-063904",
+    pair: "STGUSDT",
+    side: "long",
+    scenario: "Range after pump",
+    rating: 78,
+    entry: 0.3683,
+    exit: 0.3683,
+    reason: "SL",
+    status: "closed",
+    tpHit: "TP1",
+    resultPct: 2.77,
+    mfe: 2.77,
+    mae: -2.55,
+    riskPct: 4.08,
+    tp1R: 0.68,
+    timeInTrade: "2h 8m",
+    timeToTp1: "2h 1m",
+    setupMode: "watch",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-06-02T06:36:04.187Z",
+    entryTouchedPrice: 0.3605,
+    openedAt: "2026-06-02T06:39:04.168Z",
+    tp1At: "2026-06-02T08:40:59.999Z",
+    closedAt: "2026-06-02T08:47:59.999Z",
+    outcome: "Win",
+    market: { gainerRank: 4, btcMovePct: -5.34, metadata: { pump: { distanceFromHighPct: 18.41, timeSincePumpMin: 633 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-06-02-epicusdt-short-064640-080959",
+    tradeId: "work-2026-06-02-epicusdt-short-064640",
+    pair: "EPICUSDT",
+    side: "short",
+    scenario: "Top rejection short",
+    rating: 100,
+    entry: 0.3645,
+    exit: 0.3645,
+    reason: "SL",
+    status: "closed",
+    tpHit: "TP1, TP2",
+    resultPct: 6.61,
+    mfe: 7.93,
+    mae: -1.62,
+    riskPct: 5.63,
+    tp1R: 1.17,
+    timeInTrade: "1h 23m",
+    timeToTp1: "51m",
+    setupMode: "trade",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-06-02T06:42:04.172Z",
+    entryTouchedPrice: 0.3795,
+    openedAt: "2026-06-02T06:46:40.522Z",
+    tp1At: "2026-06-02T07:38:04.255Z",
+    closedAt: "2026-06-02T08:09:59.999Z",
+    outcome: "Win",
+    market: { gainerRank: 5, btcMovePct: -1.17, metadata: { pump: { distanceFromHighPct: 4.97, timeSincePumpMin: 1405 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-06-02-skyaiusdt-short-064104-084759",
+    tradeId: "work-2026-06-02-skyaiusdt-short-064104",
+    pair: "SKYAIUSDT",
+    side: "short",
+    scenario: "Top rejection short",
+    rating: 100,
+    entry: 0.30324,
+    exit: 0.30324,
+    reason: "SL",
+    status: "closed",
+    tpHit: "TP1, TP2",
+    resultPct: 16.35,
+    mfe: 18.04,
+    mae: -5.39,
+    riskPct: 6.18,
+    tp1R: 1.03,
+    timeInTrade: "2h 6m",
+    timeToTp1: "24m",
+    setupMode: "trade",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-06-02T06:27:20.717Z",
+    entryTouchedPrice: 0.3102,
+    openedAt: "2026-06-02T06:41:04.158Z",
+    tp1At: "2026-06-02T07:05:04.541Z",
+    closedAt: "2026-06-02T08:47:59.999Z",
+    outcome: "Win",
+    market: { gainerRank: 2, btcMovePct: -1.17, metadata: { pump: { distanceFromHighPct: 3.37, timeSincePumpMin: 85 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-06-02-homeusdt-short-062833-063404",
+    tradeId: "work-2026-06-02-homeusdt-short-062833",
+    pair: "HOMEUSDT",
+    side: "short",
+    scenario: "Top rejection short",
+    rating: 100,
+    entry: 0.044751,
+    exit: 0.044751,
+    reason: "SL",
+    status: "closed",
+    tpHit: "TP1",
+    resultPct: 0.06,
+    mfe: 0.30,
+    mae: -0.16,
+    riskPct: 4.97,
+    tp1R: 0.01,
+    timeInTrade: "5m",
+    timeToTp1: "3m",
+    setupMode: "trade",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-06-01T13:39:11.184Z",
+    entryTouchedPrice: 0.045983,
+    openedAt: "2026-06-02T06:28:33.234Z",
+    tp1At: "2026-06-02T06:32:04.222Z",
+    closedAt: "2026-06-02T06:34:04.184Z",
+    outcome: "Win",
+    market: { gainerRank: 5, btcMovePct: -2.13, metadata: { pump: { distanceFromHighPct: 5.69, timeSincePumpMin: 158 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-06-02-mboxusdt-short-061510-101259",
+    tradeId: "work-2026-06-02-mboxusdt-short-061510",
+    pair: "MBOXUSDT",
+    side: "short",
+    scenario: "Top rejection short",
+    rating: 100,
+    entry: 0.01344,
+    exit: 0.01344,
+    reason: "SL",
+    status: "closed",
+    tpHit: "TP1, TP2",
+    resultPct: 2.21,
+    mfe: 8.93,
+    mae: -0.07,
+    riskPct: 4.13,
+    tp1R: 0.04,
+    timeInTrade: "27h 57m",
+    timeToTp1: "1m",
+    setupMode: "trade",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-06-01T06:04:10.456Z",
+    entryTouchedPrice: 0.01376,
+    openedAt: "2026-06-01T06:15:10.449Z",
+    tp1At: "2026-06-01T06:16:10.454Z",
+    closedAt: "2026-06-02T10:12:59.999Z",
+    outcome: "Win",
+    market: { gainerRank: 9, btcMovePct: -5.31, metadata: { pump: { distanceFromHighPct: 3.42, timeSincePumpMin: 473 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+  {
+    importKey: "2026-06-02-komausdt-short-052312-090559",
+    tradeId: "work-2026-06-02-komausdt-short-052312",
+    pair: "KOMAUSDT",
+    side: "short",
+    scenario: "Top rejection short",
+    rating: 100,
+    entry: 0.007738,
+    exit: 0.0066843,
+    reason: "Final TP",
+    status: "closed",
+    tpHit: "TP1, TP2, TP3",
+    resultPct: 13.62,
+    mfe: 14.05,
+    mae: -3.67,
+    riskPct: 5.45,
+    tp1R: 0.63,
+    timeInTrade: "99h 42m",
+    timeToTp1: "7h 41m",
+    setupMode: "trade",
+    entryRule: "touch-and-confirm",
+    entryTouchedAt: "2026-05-29T05:07:43.363Z",
+    entryTouchedPrice: 0.007886,
+    openedAt: "2026-05-29T05:23:12.738Z",
+    tp1At: "2026-05-29T13:04:29.540Z",
+    closedAt: "2026-06-02T09:05:59.999Z",
+    outcome: "Win",
+    market: { gainerRank: 3, btcMovePct: -5.57, metadata: { pump: { distanceFromHighPct: 0.78, timeSincePumpMin: 907 }, higherTimeframe: { h1: { trend: "up" } }, liquidity: { bucket: "clean" } } },
+  },
+];
+
 const SERVICE_PC_ANALYSIS_ROWS = `2026-05-22,PROVEUSDT,long,deň -> ráno,Range after pump,-,-,nie,-8.93,Loss SL,15,-,-,-,-,Paper
 2026-05-22,AVNTUSDT,long,deň -> ráno,Pullback long,-,-,TP1 TP2,3.31,Win SL,99,-,-,-,-,Paper
 2026-05-22,EDENUSDT,long,ráno,Range after pump,-,-,TP1 TP2 TP3,36.88,Win Final TP,14,-,-,-,-,Paper`;
@@ -1873,6 +2436,18 @@ let selected = null;
 const MAX_STRUCTURAL_RISK_PCT = 7;
 const AUTO_SCAN_MS = 10 * 60 * 1000;
 const ENTRY_CONFIRM_ATR = 0.12;
+const ENTRY_CONFIRM_PROFILES = {
+  default: { type: "zone-confirm", atr: ENTRY_CONFIRM_ATR },
+  rangeAfterPump: { type: "range-bounce-confirm", atr: 0.16 },
+  rangeAfterPumpNearHigh: { type: "range-bounce-near-high-confirm", atr: 0.24 },
+  rangeAfterPumpDeep: { type: "deep-range-strong-bounce-confirm", atr: 0.34 },
+  pullback: { type: "pullback-reclaim-confirm", atr: 0.16 },
+  pullbackIdeal: { type: "pullback-ideal-reclaim-confirm", atr: 0.10 },
+  pullbackNearHigh: { type: "pullback-near-high-confirm", atr: 0.24 },
+  rangeLowBounce: { type: "range-low-bounce-confirm", atr: 0.10 },
+  rejection: { type: "short-rejection-confirm", atr: 0.12 },
+  tooHot: { type: "too-hot-rejection-confirm", atr: 0.24 },
+};
 const WIDE_SETUP_REFINE_PCT = 5;
 const MIN_REFINED_MOVE_PCT = 0.8;
 const PAPER_CATCHUP_GAP_MS = 90 * 1000;
@@ -2213,9 +2788,11 @@ function buildAnalysisBundle(date = localIsoDay()) {
 function buildAnalysisText(date = localIsoDay()) {
   const bundle = buildAnalysisBundle(date);
   const rows = bundle.analysisRowsToday;
+  const allRows = bundle.analysisRowsAll;
   const stats = analysisStats(rows);
+  const allStats = analysisStats(allRows);
   const lines = [
-    "GAINERS_LAB_ANALYSIS_EXPORT",
+    "GAINERS_LAB_FULL_ANALYSIS_EXPORT",
     `date: ${date}`,
     `exportedAt: ${bundle.exportedAt}`,
     `rowsToday: ${rows.length}`,
@@ -2225,15 +2802,19 @@ function buildAnalysisText(date = localIsoDay()) {
     `daySnapshots: ${bundle.counts.daySnapshotsToday} today / ${bundle.counts.daySnapshotsAll} all`,
     `paper: ${bundle.counts.paperWaiting} waiting / ${bundle.counts.paperActive} active`,
     "",
+    "ALL_ANALYSIS_SUMMARY",
+    `WR ${fmt(allStats.winrate, 0)}% | wins ${allStats.wins} | losses ${allStats.losses} | avg ${pct(allStats.avg)} | total ${pct(allStats.total)}`,
+    `TP1 hit ${fmt(allStats.tp1Rate, 0)}% | avg MFE ${pct(allStats.avgMfe)} | avg MAE ${pct(allStats.avgMae)}`,
+    "",
     "TODAY_SUMMARY",
     `WR ${fmt(stats.winrate, 0)}% | wins ${stats.wins} | losses ${stats.losses} | avg ${pct(stats.avg)} | total ${pct(stats.total)}`,
     "",
-    "TODAY_ANALYSIS_ROWS",
+    "ALL_ANALYSIS_ROWS",
   ];
-  if (!rows.length) {
+  if (!allRows.length) {
     lines.push("-");
   } else {
-    rows.forEach((row) => {
+    allRows.forEach((row) => {
       const metadata = row.metadata || {};
       const pump = metadata.pump || {};
       const h1 = metadata.higherTimeframe?.h1 || {};
@@ -2241,7 +2822,7 @@ function buildAnalysisText(date = localIsoDay()) {
       lines.push(
         `${row.date} | ${row.pair} | ${row.side} | ${row.session} | ${row.scenario} | rating ${Number.isFinite(row.rating) ? row.rating : "-"} | ${row.tpHit || "nie"} | ${pct(row.resultPct)} | ${row.status} | ${row.account}`,
         `  entry ${fmt(row.entry)} | exit ${fmt(row.exit)} | MFE ${pct(row.mfe)} | MAE ${pct(row.mae)} | time ${row.timeInTrade || "-"} | TP1 time ${row.timeToTp1 || "-"}`,
-        `  risk ${pct(row.riskPct)} | TP1/R ${fmtLogNum(row.tp1R, 2, "R")} | noTP1Failure ${row.noTp1Failure ? "yes" : "no"} | mfeBeforeClose ${pct(row.mfeBeforeClose)}`,
+        `  risk ${pct(row.riskPct)} | TP1/R ${fmtLogNum(row.tp1R, 2, "R")} | confirm ${row.entryConfirmType || "-"} | noTP1Failure ${row.noTp1Failure ? "yes" : "no"} | mfeBeforeClose ${pct(row.mfeBeforeClose)}`,
         `  opened ${row.openedAt || "-"} (${dateTimeLabel(row.openedAt)}) | TP1 ${row.tp1At || "-"} (${dateTimeLabel(row.tp1At)}) | closed ${row.closedAt || "-"} (${dateTimeLabel(row.closedAt)})`,
         `  metadata: rank #${row.gainerRank || metadata.gainerRank || "-"} | highDist ${fmtLogNum(pump.distanceFromHighPct, 2, "%")} | highDistAtOpen ${pct(row.distanceFromHighAtOpen)} | pumpAge ${durationLabel(pump.timeSincePumpMin)} | 1h ${h1.trend || "-"} | liquidity ${liquidity.bucket || "-"} | BTC move ${pct(row.btcMovePct)}`
       );
@@ -2274,7 +2855,7 @@ function exportDayLog() {
 
 function exportAnalysisText() {
   const date = localIsoDay();
-  downloadText(`gainers-lab-analysis-${date}.txt`, buildAnalysisText(date));
+  downloadText(`gainers-lab-full-analysis-${date}.txt`, buildAnalysisText(date));
 }
 
 function exportAnalysisJson() {
@@ -2806,6 +3387,11 @@ function normalizeTradeAtOpen(trade, entry) {
   nextTrade.riskPct = absMovePct(entry, nextTrade.stop);
   nextTrade.tp1R = rewardRiskRatio(entry, nextTrade.targets[0]?.price, nextTrade.stop, nextTrade.side);
   nextTrade.distanceFromHighAtOpen = distanceFromHighAtPrice(nextTrade, entry);
+  const confirmProfile = entryConfirmProfile(nextTrade, entry);
+  nextTrade.entryConfirmType = nextTrade.entryConfirmType || confirmProfile.type;
+  nextTrade.entryConfirmAtr = nextTrade.entryConfirmAtr || confirmProfile.atr;
+  nextTrade.entryConfirmedAt = nextTrade.entryConfirmedAt || new Date().toISOString();
+  nextTrade.entryConfirmedPrice = nextTrade.entryConfirmedPrice ?? entry;
   if (nextTrade.side === "short") {
     nextTrade.shortConfirmAfterTouch = Boolean(nextTrade.entryTouchedAt);
     nextTrade.shortEntryBelowHighPct = Number.isFinite(nextTrade.shortEntryBelowHighPct)
@@ -2819,6 +3405,10 @@ function normalizeTradeAtOpen(trade, entry) {
     distanceFromHighAtOpen: nextTrade.distanceFromHighAtOpen,
     tp1R: nextTrade.tp1R,
     tp1Quality: tp1QualityBucket(nextTrade.tp1R),
+    entryConfirmType: nextTrade.entryConfirmType,
+    entryConfirmAtr: nextTrade.entryConfirmAtr,
+    entryConfirmedAt: nextTrade.entryConfirmedAt,
+    entryConfirmedPrice: nextTrade.entryConfirmedPrice,
     shortRejectionTouched: nextTrade.side === "short" ? Boolean(nextTrade.shortRejectionTouched) : null,
     shortEntryBelowHighPct: nextTrade.side === "short" ? nextTrade.shortEntryBelowHighPct : null,
     shortConfirmAfterTouch: nextTrade.side === "short" ? Boolean(nextTrade.shortConfirmAfterTouch) : null,
@@ -2833,6 +3423,27 @@ function distanceFromHighAtPrice(trade, price) {
   if (Number.isFinite(high) && high > 0 && Number.isFinite(price)) return ((high - price) / high) * 100;
   const fallback = Number(trade.market?.metadata?.pump?.distanceFromHighPct);
   return Number.isFinite(fallback) ? fallback : NaN;
+}
+
+function entryConfirmProfile(trade, current = null) {
+  const scenario = trade?.scenario || "";
+  const highDist = Number.isFinite(current)
+    ? distanceFromHighAtPrice(trade, current)
+    : Number(trade?.distanceFromHighAtOpen ?? trade?.market?.metadata?.pump?.distanceFromHighPct);
+  if (scenario === "Range after pump") {
+    if (Number.isFinite(highDist) && highDist < 2) return ENTRY_CONFIRM_PROFILES.rangeAfterPumpNearHigh;
+    if (Number.isFinite(highDist) && highDist > 12) return ENTRY_CONFIRM_PROFILES.rangeAfterPumpDeep;
+    return ENTRY_CONFIRM_PROFILES.rangeAfterPump;
+  }
+  if (scenario === "Pullback long") {
+    if (Number.isFinite(highDist) && highDist >= 6 && highDist < 12) return ENTRY_CONFIRM_PROFILES.pullbackIdeal;
+    if (Number.isFinite(highDist) && highDist < 2) return ENTRY_CONFIRM_PROFILES.pullbackNearHigh;
+    return ENTRY_CONFIRM_PROFILES.pullback;
+  }
+  if (scenario === "Range low bounce") return ENTRY_CONFIRM_PROFILES.rangeLowBounce;
+  if (scenario === "Too hot / top watch") return ENTRY_CONFIRM_PROFILES.tooHot;
+  if (scenario === "Top rejection short") return ENTRY_CONFIRM_PROFILES.rejection;
+  return ENTRY_CONFIRM_PROFILES.default;
 }
 
 function tp1QualityBucket(tp1R) {
@@ -2864,9 +3475,19 @@ function qualityRating({ scenario, plan, volumeRatio, extensionAtr, distanceToZo
   if (scenario === "Range after pump") {
     score += rangePosition <= 42 ? 11 : rangePosition >= 65 ? -18 : -7;
     score += extensionAtr <= 1.6 ? 4 : -8;
+    if (Number.isFinite(distanceFromHighPct)) {
+      if (distanceFromHighPct >= 2 && distanceFromHighPct < 12) score += 9;
+      else if (distanceFromHighPct > 12) score -= 12;
+      else if (distanceFromHighPct < 2) score -= 8;
+    }
   } else if (scenario === "Pullback long") {
     score += rangePosition >= 35 && rangePosition <= 75 ? 8 : -12;
     score += extensionAtr <= 1.25 ? 6 : -10;
+    if (Number.isFinite(distanceFromHighPct)) {
+      if (distanceFromHighPct >= 6 && distanceFromHighPct < 12) score += 10;
+      else if (distanceFromHighPct < 2) score -= 12;
+      else if (distanceFromHighPct < 6) score -= 5;
+    }
   } else if (scenario === "Top rejection short") {
     score += extensionAtr >= 1.15 ? 10 : -10;
     score += rangePosition >= 68 ? 8 : -6;
@@ -2946,8 +3567,11 @@ function analyzeGainer(ticker, candles, book = null, candles1h = [], gainerRank 
   const tp1R = rewardRiskRatio(plan.entry, plan.targets[0], plan.stop, plan.side);
   if (Number.isFinite(tp1R) && tp1R < 0.4) warnings.push("TP1 je nízke voči risku.");
   if (scenario === "Range after pump" && rangePosition > 62) warnings.push("Range after pump je vyššie v range, čakať hlbšiu zónu alebo reakciu.");
+  if (scenario === "Range after pump" && Number.isFinite(pump.distanceFromHighPct) && pump.distanceFromHighPct > 12) warnings.push("Range after pump je hlboko od high, potrebuje silnejší bounce confirm.");
+  if (scenario === "Range after pump" && Number.isFinite(pump.distanceFromHighPct) && pump.distanceFromHighPct < 2) warnings.push("Range after pump je príliš blízko high, nebrať bez potvrdenej reakcie.");
   if (scenario === "Pullback long" && volumeRatio < 0.8) warnings.push("Long pullback má slabší volume kontext.");
   if (scenario === "Pullback long" && rangePosition > 80) warnings.push("Pullback long je príliš vysoko v range.");
+  if (scenario === "Pullback long" && Number.isFinite(pump.distanceFromHighPct) && pump.distanceFromHighPct < 2) warnings.push("Pullback long je príliš blízko high, čakať reclaim po pullbacku.");
   if ((scenario === "Top rejection short" || scenario === "Too hot / top watch") && extensionAtr < 1.1) warnings.push("Short rejection nemá dostatočné natiahnutie.");
   if (scenario === "Too hot / top watch") warnings.push("Too hot je len watch, nie high-confidence obchod bez potvrdeného rejectionu.");
   const setupMode = scenario === "Too hot / top watch" || scenario === "Range after pump" ? "watch" : "trade";
@@ -2955,6 +3579,7 @@ function analyzeGainer(ticker, candles, book = null, candles1h = [], gainerRank 
   const state = `${setupMode === "watch" ? "paper watch" : "paper trade"} | ${distanceToZoneAtr <= 0.45 ? "ready zone" : "forming"}`;
   const atrPct = atrNow ? (atrNow / last.close) * 100 : NaN;
   const rating = qualityRating({ scenario, plan, volumeRatio, extensionAtr, distanceToZoneAtr, atrPct, rangePosition, reactionScore, setupMode, warnings, gainerRank, pump });
+  const entryProfile = entryConfirmProfile({ scenario, side: plan.side, market: { metadata: { pump } } });
 
   return {
     id: ticker.symbol,
@@ -3003,6 +3628,8 @@ function analyzeGainer(ticker, candles, book = null, candles1h = [], gainerRank 
         reactionScore,
         refinement: plan.refinement || null,
         entryRule: "touch-and-confirm",
+        entryConfirmType: entryProfile.type,
+        entryConfirmAtr: entryProfile.atr,
         reason: `${scenario} | ${setupMode} | ${distanceToZoneAtr <= 0.45 ? "ready zone" : "forming"}`,
       },
       capturedAt: new Date().toISOString(),
@@ -3292,6 +3919,9 @@ function migrateServicePcJournalImports() {
   migrateJournalImportRows(SERVICE_PC_JOURNAL_IMPORTS_20260529, STORE.journalImportPatch20260529);
   migrateJournalImportRows(MOBILE_JOURNAL_IMPORTS_20260530, STORE.journalImportPatch20260530);
   migrateJournalImportRows(MOBILE_JOURNAL_IMPORTS_20260531, STORE.journalImportPatch20260531);
+  migrateJournalImportRows(MOBILE_JOURNAL_IMPORTS_20260601, STORE.journalImportPatch20260601);
+  migrateJournalImportRows(WORK_JOURNAL_IMPORTS_20260601, STORE.journalImportPatch20260601Work);
+  migrateJournalImportRows(WORK_JOURNAL_IMPORTS_20260602, STORE.journalImportPatch20260602Work);
 }
 
 function migrateJournalConsistency() {
@@ -3404,6 +4034,9 @@ function migrateRemoveOversizedRiskTrade() {
     ui.startPaperButton.textContent = "Ukladám BTC kontext...";
     try {
       const btc = await btcContext().catch(() => null);
+      const entryProfile = selected.metadata?.decision?.entryConfirmType
+        ? { type: selected.metadata.decision.entryConfirmType, atr: selected.metadata.decision.entryConfirmAtr || ENTRY_CONFIRM_ATR }
+        : entryConfirmProfile({ scenario: selected.scenario, side: p.side, market: { metadata: selected.metadata } });
       state.waiting.unshift({
         id: uid("paper"),
         pair: selected.pair,
@@ -3418,6 +4051,8 @@ function migrateRemoveOversizedRiskTrade() {
         tp1R: rewardRiskRatio(p.entry, p.targets[0], p.stop, p.side),
         tradable: selected.tradable,
         setupMode: selected.setupMode || "trade",
+        entryConfirmType: entryProfile.type,
+        entryConfirmAtr: entryProfile.atr,
         warnings: selected.warnings,
         market: {
           dayChange: selected.dayChange,
@@ -3443,6 +4078,7 @@ function migrateRemoveOversizedRiskTrade() {
           distanceFromHighAtOpen: null,
           tp1R: rewardRiskRatio(p.entry, p.targets[0], p.stop, p.side),
           tp1Quality: tp1QualityBucket(rewardRiskRatio(p.entry, p.targets[0], p.stop, p.side)),
+          entryConfirmType: entryProfile.type,
           noTp1Failure: false,
           mfeBeforeClose: 0,
         },
@@ -3467,10 +4103,13 @@ function hitEntry(trade, current) {
   return current >= from && current <= to;
 }
 
-function entryConfirmDistance(trade) {
+function entryConfirmDistance(trade, current = null) {
   const zoneWidth = Math.abs((trade.entryZone?.to || 0) - (trade.entryZone?.from || 0));
   const atrValue = Number(trade.market?.atr);
-  if (Number.isFinite(atrValue) && atrValue > 0) return atrValue * ENTRY_CONFIRM_ATR;
+  const profile = entryConfirmProfile(trade, current);
+  trade.entryConfirmType = trade.entryConfirmType || profile.type;
+  trade.entryConfirmAtr = trade.entryConfirmAtr || profile.atr;
+  if (Number.isFinite(atrValue) && atrValue > 0) return atrValue * (trade.entryConfirmAtr || profile.atr || ENTRY_CONFIRM_ATR);
   if (Number.isFinite(zoneWidth) && zoneWidth > 0) return zoneWidth * 0.35;
   return Math.abs(Number(trade.entry) || 0) * 0.0015;
 }
@@ -3506,7 +4145,10 @@ function entryDecision(trade, current) {
   if (!trade.entryZone || !Number.isFinite(current)) return "wait";
   const from = Math.min(trade.entryZone.from, trade.entryZone.to);
   const to = Math.max(trade.entryZone.from, trade.entryZone.to);
-  const confirm = entryConfirmDistance(trade);
+  const confirm = entryConfirmDistance(trade, current);
+  const profile = entryConfirmProfile(trade, current);
+  trade.entryConfirmType = profile.type;
+  trade.entryConfirmAtr = profile.atr;
 
   if (!trade.entryTouchedAt) {
     const touched = trade.side === "short"
@@ -3515,6 +4157,7 @@ function entryDecision(trade, current) {
     if (touched) {
       trade.entryTouchedAt = new Date().toISOString();
       trade.entryTouchedPrice = current;
+      trade.entryTouchConfirmType = profile.type;
       if (trade.side === "short") {
         trade.shortRejectionTouched = true;
         trade.shortEntryBelowHighPct = distanceFromHighAtPrice(trade, current);
@@ -3529,12 +4172,20 @@ function entryDecision(trade, current) {
       trade.shortRejectionTouched = true;
       trade.entryTouchedAt = new Date().toISOString();
       trade.entryTouchedPrice = current;
+      trade.entryTouchConfirmType = profile.type;
       trade.shortEntryBelowHighPct = distanceFromHighAtPrice(trade, current);
     }
     return "wait";
   }
-  if (trade.side === "long") return current >= to + confirm ? "open" : "wait";
-  return current <= from - confirm ? "open" : "wait";
+  const confirmed = trade.side === "long" ? current >= to + confirm : current <= from - confirm;
+  if (confirmed) {
+    trade.entryConfirmedAt = new Date().toISOString();
+    trade.entryConfirmedPrice = current;
+    trade.entryConfirmType = profile.type;
+    if (trade.side === "short") trade.shortConfirmAfterTouch = true;
+    return "open";
+  }
+  return "wait";
 }
 
 function updateTradeTargets(trade, current, stamp = new Date().toISOString()) {
@@ -3569,6 +4220,10 @@ function updateTradeTracking(trade, current, stamp = new Date().toISOString()) {
     distanceFromHighAtOpen: trade.distanceFromHighAtOpen,
     tp1R: trade.tp1R,
     tp1Quality: tp1QualityBucket(trade.tp1R),
+    entryConfirmType: trade.entryConfirmType || null,
+    entryConfirmAtr: trade.entryConfirmAtr || null,
+    entryConfirmedAt: trade.entryConfirmedAt || null,
+    entryConfirmedPrice: trade.entryConfirmedPrice ?? null,
     mfeBeforeClose: trade.mfeBeforeClose,
     noTp1Failure: false,
   };
@@ -3649,6 +4304,11 @@ function journalEntryFromTrade(trade, exit, reason, status = "closed", stamp = n
     distanceFromHighAtOpen,
     tp1R: trade.tp1R ?? rewardRiskRatio(trade.entry, trade.targets.find((target) => target.label === "TP1")?.price, trade.stop, trade.side),
     tp1Quality: tp1QualityBucket(trade.tp1R ?? rewardRiskRatio(trade.entry, trade.targets.find((target) => target.label === "TP1")?.price, trade.stop, trade.side)),
+    entryConfirmType: trade.entryConfirmType || null,
+    entryConfirmAtr: trade.entryConfirmAtr || null,
+    entryTouchConfirmType: trade.entryTouchConfirmType || null,
+    entryConfirmedAt: trade.entryConfirmedAt || null,
+    entryConfirmedPrice: trade.entryConfirmedPrice ?? null,
     shortRejectionTouched: trade.side === "short" ? Boolean(trade.shortRejectionTouched) : null,
     shortEntryBelowHighPct: trade.side === "short" ? trade.shortEntryBelowHighPct ?? null : null,
     shortConfirmAfterTouch: trade.side === "short" ? Boolean(trade.shortConfirmAfterTouch) : null,
@@ -3679,6 +4339,11 @@ function journalEntryFromTrade(trade, exit, reason, status = "closed", stamp = n
     shortRejectionTouched: trade.side === "short" ? Boolean(trade.shortRejectionTouched) : null,
     shortEntryBelowHighPct: trade.side === "short" ? trade.shortEntryBelowHighPct ?? null : null,
     shortConfirmAfterTouch: trade.side === "short" ? Boolean(trade.shortConfirmAfterTouch) : null,
+    entryConfirmType: trade.entryConfirmType || null,
+    entryConfirmAtr: trade.entryConfirmAtr || null,
+    entryTouchConfirmType: trade.entryTouchConfirmType || null,
+    entryConfirmedAt: trade.entryConfirmedAt || null,
+    entryConfirmedPrice: trade.entryConfirmedPrice ?? null,
     noTp1Failure: closedWithoutTp1,
     mfeBeforeClose,
     quality,
@@ -3690,6 +4355,8 @@ function journalEntryFromTrade(trade, exit, reason, status = "closed", stamp = n
     entryRule: trade.entryRule || null,
     entryTouchedAt: trade.entryTouchedAt || null,
     entryTouchedPrice: trade.entryTouchedPrice || null,
+    entryConfirmedAt: trade.entryConfirmedAt || null,
+    entryConfirmedPrice: trade.entryConfirmedPrice ?? null,
     openedAt: trade.openedAt,
     openedClock: clockTime(trade.openedAt),
     tp1At: trade.tp1At || trade.targets.find((target) => target.label === "TP1")?.hitAt || null,
@@ -3830,6 +4497,10 @@ function journalToAnalysisRows() {
     mfe: row.mfe,
     mae: row.mae,
     distanceFromHighAtOpen: row.distanceFromHighAtOpen ?? row.quality?.distanceFromHighAtOpen ?? row.market?.metadata?.pump?.distanceFromHighPct,
+    entryConfirmType: row.entryConfirmType ?? row.quality?.entryConfirmType ?? row.market?.metadata?.decision?.entryConfirmType,
+    entryConfirmAtr: row.entryConfirmAtr ?? row.quality?.entryConfirmAtr ?? row.market?.metadata?.decision?.entryConfirmAtr,
+    entryConfirmedAt: row.entryConfirmedAt ?? row.quality?.entryConfirmedAt,
+    entryConfirmedPrice: row.entryConfirmedPrice ?? row.quality?.entryConfirmedPrice,
     noTp1Failure: row.noTp1Failure ?? row.quality?.noTp1Failure ?? (!String(row.tpHit || "").toLowerCase().includes("tp1") && row.outcome === "Loss"),
     mfeBeforeClose: row.mfeBeforeClose ?? row.quality?.mfeBeforeClose ?? row.mfe,
     quality: row.quality || null,
@@ -4099,6 +4770,7 @@ function analysisTradeCard(row) {
       <span>MFE/MAE <b><em class="positive">${pct(row.mfe)}</em> / <em class="negative">${pct(row.mae)}</em></b></span>
       <span>High dist <b>${pct(row.distanceFromHighAtOpen)}</b></span>
       <span>TP1/R <b class="${Number(row.tp1R) < 0.4 ? "warning" : "positive"}">${fmt(row.tp1R, 2)}</b></span>
+      <span>Confirm <b>${row.entryConfirmType || "-"}</b></span>
       <span>No TP1 <b class="${row.noTp1Failure ? "negative" : "positive"}">${row.noTp1Failure ? "áno" : "nie"}</b></span>
       <span>Time <b>${row.timeInTrade || "-"}</b></span>
       <span>Open <b>${clockTime(row.openedAt)}</b></span>
@@ -4310,6 +4982,7 @@ function tradeCard(trade, active = false) {
         <span>Opened <b>${dateTimeLabel(trade.openedAt)}</b></span>
         <span>Open filter <b>${active ? "confirmed" : entryStatusText(trade)}</b></span>
         <span>Trigger <b>${active ? "opened" : entryTriggerValue(trade)}</b></span>
+        <span>Confirm <b>${trade.entryConfirmType || entryConfirmProfile(trade).type}</b></span>
         <span>Spread <b>${pct(market.spreadPct)}</b></span>
         <span>Vol <b>${usd(market.quoteVolume)}</b></span>
         <span>Trades <b>${compactNumber(market.tradeCount, 1)}</b></span>

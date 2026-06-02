@@ -709,6 +709,34 @@ h3 { font-size: 1.65rem; }
   gap: 10px;
 }
 
+.analysis-toggle-panel {
+  overflow: hidden;
+}
+
+.analysis-toggle-panel summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.analysis-toggle-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.analysis-toggle-panel summary::after {
+  content: "rozbaliť";
+  color: var(--muted);
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+.analysis-toggle-panel[open] summary::after {
+  content: "zbaliť";
+}
+
+.analysis-toggle-panel .analysis-bars {
+  padding-top: 12px;
+}
+
 .analysis-bar {
   display: grid;
   grid-template-columns: 1fr minmax(120px, 1.2fr) 76px;
