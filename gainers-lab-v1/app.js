@@ -2807,6 +2807,7 @@ const ui = {
   analysisSideBars: document.getElementById("analysisSideBars"),
   analysisRatingBars: document.getElementById("analysisRatingBars"),
   analysisSetupSideBars: document.getElementById("analysisSetupSideBars"),
+  analysisExcursionSummary: document.getElementById("analysisExcursionSummary"),
   analysisMonthMeta: document.getElementById("analysisMonthMeta"),
   analysisMonths: document.getElementById("analysisMonths"),
   analysisWeekMeta: document.getElementById("analysisWeekMeta"),
@@ -2829,8 +2830,11 @@ const ENTRY_CONFIRM_PROFILES = {
   pullback: { type: "pullback-reclaim-confirm", atr: 0.16 },
   pullbackIdeal: { type: "pullback-ideal-reclaim-confirm", atr: 0.10 },
   pullbackNearHigh: { type: "pullback-near-high-confirm", atr: 0.24 },
+  momentumContinuation: { type: "momentum-continuation-retest-confirm", atr: 0.14 },
+  momentumContinuationHot: { type: "momentum-hot-retest-confirm", atr: 0.22 },
   rangeLowBounce: { type: "range-low-bounce-confirm", atr: 0.10 },
   rejection: { type: "short-rejection-confirm", atr: 0.12 },
+  rejectionStrict: { type: "short-rejection-futures-confirm", atr: 0.22 },
   tooHot: { type: "too-hot-rejection-confirm", atr: 0.24 },
 };
 const WIDE_SETUP_REFINE_PCT = 5;
@@ -2925,6 +2929,105 @@ function dateTimeLabel(stamp) {
 function movePct(entry, price, side) {
   if (!Number.isFinite(entry) || !Number.isFinite(price) || entry <= 0) return NaN;
   return ((price - entry) / entry) * 100 * (side === "short" ? -1 : 1);
+}
+
+function pathPoint(trade, current, resultPct, stamp) {
+  return {
+    at: stamp,
+    price: current,
+    pnlPct: Number.isFinite(resultPct) ? resultPct : 0,
+    ageMin: Math.max(0, Math.floor(minutesSince(trade.openedAt || stamp, stamp))),
+  };
+}
+
+function shouldKeepPathPoint(samples, point) {
+  const last = samples[samples.length - 1];
+  if (!last) return true;
+  const lastMs = new Date(last.at).getTime();
+  const pointMs = new Date(point.at).getTime();
+  const seconds = Number.isFinite(lastMs) && Number.isFinite(pointMs) ? (pointMs - lastMs) / 1000 : 0;
+  const pnlDelta = Math.abs((Number(point.pnlPct) || 0) - (Number(last.pnlPct) || 0));
+  const crossedZero = Math.sign(Number(point.pnlPct) || 0) !== Math.sign(Number(last.pnlPct) || 0);
+  return seconds >= 30 || pnlDelta >= 0.25 || crossedZero;
+}
+
+function pointAtOrAbove(points, level) {
+  return points.find((point) => Number(point.pnlPct) >= level) || null;
+}
+
+function minPnlBefore(points, stamp) {
+  if (!stamp) return null;
+  const end = new Date(stamp).getTime();
+  const before = points.filter((point) => new Date(point.at).getTime() <= end);
+  if (!before.length) return null;
+  return before.reduce((min, point) => Math.min(min, Number(point.pnlPct) || 0), 0);
+}
+
+function derivePathMeta(samples = []) {
+  const points = samples.filter((point) => Number.isFinite(Number(point.pnlPct)));
+  const positives = points.filter((point) => Number(point.pnlPct) > 0);
+  const negatives = points.filter((point) => Number(point.pnlPct) < 0);
+  const mfePoint = points.reduce((best, point) => Number(point.pnlPct) > Number(best?.pnlPct ?? -Infinity) ? point : best, null);
+  const maePoint = points.reduce((worst, point) => Number(point.pnlPct) < Number(worst?.pnlPct ?? Infinity) ? point : worst, null);
+  const firstPositive = positives[0] || null;
+  const firstNegative = negatives[0] || null;
+  let firstMove = "flat";
+  if (firstPositive && firstNegative) firstMove = new Date(firstPositive.at).getTime() <= new Date(firstNegative.at).getTime() ? "positive-first" : "negative-first";
+  else if (firstPositive) firstMove = "positive-only";
+  else if (firstNegative) firstMove = "negative-only";
+  const mfe = Math.max(0, Number(mfePoint?.pnlPct) || 0);
+  const absMae = Math.abs(Math.min(0, Number(maePoint?.pnlPct) || 0));
+  const plus1 = pointAtOrAbove(points, 1);
+  const plus3 = pointAtOrAbove(points, 3);
+  const plus5 = pointAtOrAbove(points, 5);
+  return {
+    sampleCount: points.length,
+    firstMove,
+    firstPositiveAt: firstPositive?.at || null,
+    firstNegativeAt: firstNegative?.at || null,
+    mfeAt: mfePoint?.at || null,
+    maeAt: maePoint?.at || null,
+    mfeBeforeMae: mfePoint && maePoint ? new Date(mfePoint.at).getTime() <= new Date(maePoint.at).getTime() : null,
+    mfeMaeRatio: absMae > 0 ? mfe / absMae : (mfe > 0 ? null : 0),
+    netExcursionEdge: mfe - absMae,
+    excursionEfficiency: mfe + absMae > 0 ? (mfe / (mfe + absMae)) * 100 : 0,
+    plus1At: plus1?.at || null,
+    plus3At: plus3?.at || null,
+    plus5At: plus5?.at || null,
+    maeBeforePlus1: minPnlBefore(points, plus1?.at),
+    maeBeforePlus3: minPnlBefore(points, plus3?.at),
+    maeBeforePlus5: minPnlBefore(points, plus5?.at),
+  };
+}
+
+function appendPathSample(trade, current, resultPct, stamp) {
+  const samples = Array.isArray(trade.pricePath) ? [...trade.pricePath] : [];
+  const point = pathPoint(trade, current, resultPct, stamp);
+  if (shouldKeepPathPoint(samples, point)) samples.push(point);
+  const trimmed = samples.length > 720 ? [samples[0], ...samples.slice(-719)] : samples;
+  return {
+    pricePath: trimmed,
+    pathMeta: derivePathMeta(trimmed),
+  };
+}
+
+function pathMetaLabel(trade) {
+  const meta = trade?.pathMeta || trade?.quality?.pathMeta || {};
+  if (!meta.sampleCount) return "bez path";
+  const labels = {
+    "positive-first": "najprv plus",
+    "negative-first": "najprv mínus",
+    "positive-only": "iba plus",
+    "negative-only": "iba mínus",
+    flat: "flat",
+  };
+  return labels[meta.firstMove] || meta.firstMove || "path";
+}
+
+function ratioLabel(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return `${number.toFixed(2)}x`;
 }
 
 function absMovePct(entry, price) {
@@ -3085,6 +3188,7 @@ function formatTradeLogLine(trade, label) {
     `  status ${trade.status || "-"} | entry ${fmt(trade.entry)} | exit ${fmt(trade.exit)} | result ${pct(trade.resultPct)}`,
     `  openFilter ${trade.entryRule || "-"} | touchedAt ${trade.entryTouchedAt || "-"} | touchedPrice ${fmt(trade.entryTouchedPrice)}`,
     `  TP ${trade.tpHit || trade.targets?.filter((target) => target.hit).map((target) => target.label).join(" ") || "nie"} | TP1 at ${trade.tp1At || trade.targets?.find((target) => target.label === "TP1")?.hitAt || "-"} (${dateTimeLabel(trade.tp1At || trade.targets?.find((target) => target.label === "TP1")?.hitAt)}) | TP1 after ${trade.timeToTp1 || "-"} | MFE ${pct(trade.mfe)} | MAE ${pct(trade.mae)} | time ${trade.timeInTrade || "-"}`,
+    `  path ${pathMetaLabel(trade)} | eff ${pct(trade.excursionEfficiency ?? trade.pathMeta?.excursionEfficiency ?? trade.quality?.excursionEfficiency, 0)} | MFE/MAE ${ratioLabel(trade.mfeMaeRatio ?? trade.pathMeta?.mfeMaeRatio ?? trade.quality?.mfeMaeRatio)} | edge ${pct(trade.netExcursionEdge ?? trade.pathMeta?.netExcursionEdge ?? trade.quality?.netExcursionEdge)} | MAE before +3 ${pct(trade.maeBeforePlus3 ?? trade.pathMeta?.maeBeforePlus3 ?? trade.quality?.maeBeforePlus3)}`,
     `  risk: initial ${pct(trade.riskPct)} | TP1/R ${fmtLogNum(trade.tp1R, 2, "R")}`,
     `  metadata: highDist ${fmtLogNum(pump.distanceFromHighPct, 2, "%")} | pumpAge ${durationLabel(pump.timeSincePumpMin)} | 1h ${h1.trend || "-"} | liquidity ${liquidity.bucket || "-"} | BTC move ${pct(market.btcMovePct)}`,
   ].join("\n");
@@ -3219,6 +3323,7 @@ function buildAnalysisText(date = localIsoDay()) {
         `${row.date} | ${row.pair} | ${row.side} | ${row.session} | ${row.scenario} | rating ${Number.isFinite(row.rating) ? row.rating : "-"} | ${row.tpHit || "nie"} | ${pct(row.resultPct)} | ${row.status} | ${row.account}`,
         `  entry ${fmt(row.entry)} | exit ${fmt(row.exit)} | MFE ${pct(row.mfe)} | MAE ${pct(row.mae)} | time ${row.timeInTrade || "-"} | TP1 time ${row.timeToTp1 || "-"}`,
         `  risk ${pct(row.riskPct)} | TP1/R ${fmtLogNum(row.tp1R, 2, "R")} | confirm ${row.entryConfirmType || "-"} | noTP1Failure ${row.noTp1Failure ? "yes" : "no"} | mfeBeforeClose ${pct(row.mfeBeforeClose)}`,
+        `  path ${pathMetaLabel(row)} | eff ${pct(row.excursionEfficiency, 0)} | MFE/MAE ${ratioLabel(row.mfeMaeRatio)} | edge ${pct(row.netExcursionEdge)} | MAE before +3 ${pct(row.maeBeforePlus3)}`,
         `  opened ${row.openedAt || "-"} (${dateTimeLabel(row.openedAt)}) | TP1 ${row.tp1At || "-"} (${dateTimeLabel(row.tp1At)}) | closed ${row.closedAt || "-"} (${dateTimeLabel(row.closedAt)})`,
         `  metadata: rank #${row.gainerRank || metadata.gainerRank || "-"} | highDist ${fmtLogNum(pump.distanceFromHighPct, 2, "%")} | highDistAtOpen ${pct(row.distanceFromHighAtOpen)} | pumpAge ${durationLabel(pump.timeSincePumpMin)} | 1h ${h1.trend || "-"} | liquidity ${liquidity.bucket || "-"} | BTC move ${pct(row.btcMovePct)}`
       );
@@ -3312,6 +3417,15 @@ async function klinesRange(pair, interval = "1m", startTime = Date.now() - 60 * 
 async function price(pair) {
   const data = await json(`${API}/fapi/v1/ticker/price?symbol=${pair}`);
   return Number(data.price);
+}
+
+async function openInterestHist(pair, period = "5m", limit = 12) {
+  const rows = await json(`${API}/futures/data/openInterestHist?symbol=${pair}&period=${period}&limit=${limit}`);
+  return rows.map((row) => ({
+    timestamp: Number(row.timestamp),
+    sumOpenInterest: Number(row.sumOpenInterest),
+    sumOpenInterestValue: Number(row.sumOpenInterestValue),
+  }));
 }
 
 async function btcContext(openedAt = null) {
@@ -3557,9 +3671,19 @@ function classifyScenario(data) {
   const clearReject = nearHighAtr <= 1.1 && upperWick > body * 1.15 && last.close < last.high - atrNow * 0.22;
   const clearBounce = rangePosition <= 32 && lowerWick >= body * 0.8 && last.close > last.low + atrNow * 0.18;
   const healthyPullback = aboveTrend && extensionAtr <= 1.25 && last.close >= ma25 && volumeRatio >= 0.8 && rangePosition >= 35 && rangePosition <= 82;
+  const momentumContinuation = aboveTrend
+    && rangePosition >= 68
+    && rangePosition <= 96
+    && nearHighAtr <= 1.8
+    && extensionAtr >= 0.75
+    && extensionAtr <= 2.05
+    && volumeRatio >= 1.02
+    && last.close >= last.open
+    && upperWick <= body * 1.35;
 
   if (clearReject && extensionAtr >= 1.15) return "Top rejection short";
   if (extensionAtr >= 2.2 && nearHighAtr <= 0.8) return "Too hot / top watch";
+  if (momentumContinuation) return "Momentum continuation long";
   if (last.close >= rangeHigh - atrNow * 0.35 && volumeRatio >= 1.15) return "Breakout retest";
   if (clearBounce) return "Range low bounce";
   if (healthyPullback) return "Pullback long";
@@ -3591,6 +3715,28 @@ function scenarioPlan(data, scenario) {
       note: scenario === "Too hot / top watch"
         ? "Cena je príliš natiahnutá. Bez návratu do zóny a odmietnutia vrchu je to watch only."
         : "Short až po odmietnutí vrchu alebo návrate pod zónu. Samotná vysoká cena nestačí.",
+    });
+  }
+
+  if (scenario === "Momentum continuation long") {
+    const momentumAnchor = Math.max(
+      nearestBelow([...levels.highs, ma7, vwapNow], priceNow, priceNow - atrNow * 0.45),
+      priceNow - atrNow * 0.62
+    );
+    const entryZone = zoneAround(momentumAnchor, atrNow, 0.18);
+    const structuralLow = nearestBelow([ma7, ...levels.lows, vwapNow, ma25, rangeLow], entryZone.from, entryZone.from - atrNow * 0.85);
+    const stop = Math.max(0, Math.min(structuralLow - atrNow * 0.18, entryZone.from - atrNow * 0.50));
+    const risk = Math.abs(entryZone.from - stop);
+    const tp1 = Math.max(priceNow + atrNow * 0.55, entryZone.to + risk * 0.75);
+    const tp2 = Math.max(rangeHigh + atrNow * 0.45, entryZone.to + risk * 1.45);
+    const tp3 = Math.max(rangeHigh + atrNow * 1.15, entryZone.to + risk * 2.15);
+    return finalizePlan({
+      side: "long",
+      entryZone,
+      stop,
+      targets: [tp1, tp2, tp3],
+      invalidation: "Strata posledného momentum higher-low alebo návrat pod VWAP bez rýchleho reclaimu.",
+      note: "Momentum continuation: coin rastie bez hlbšieho pullbacku. Vstup až po mikro reteste/reclaime, nie chase uprostred sviečky.",
     });
   }
 
@@ -3645,6 +3791,77 @@ function finalizePlan(plan) {
 
 function planTp1Pct(plan) {
   return absMovePct(plan.entry, plan.targets?.[0]);
+}
+
+function pctChange(from, to) {
+  const a = Number(from);
+  const b = Number(to);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || a === 0) return NaN;
+  return ((b - a) / a) * 100;
+}
+
+function candleTakerBuyPct(candles = []) {
+  const volume = candles.reduce((sum, candle) => sum + (Number(candle.volume) || 0), 0);
+  const taker = candles.reduce((sum, candle) => sum + (Number(candle.takerBuyVolume) || 0), 0);
+  return volume ? (taker / volume) * 100 : NaN;
+}
+
+function oiContext(openInterestHistory = []) {
+  const rows = openInterestHistory
+    .map((row) => ({
+      timestamp: Number(row.timestamp),
+      value: Number(row.sumOpenInterest),
+    }))
+    .filter((row) => Number.isFinite(row.value))
+    .sort((a, b) => a.timestamp - b.timestamp);
+  const first = rows[0]?.value;
+  const prev = rows.at(-2)?.value;
+  const last = rows.at(-1)?.value;
+  return {
+    available: rows.length >= 2,
+    changePct: pctChange(first, last),
+    recentChangePct: pctChange(prev, last),
+    samples: rows.length,
+  };
+}
+
+function shortFuturesConfirmation({ candles, last, atrNow, rangeHigh, volumeRatio, takerBuyPct, openInterestHistory }) {
+  const recent = candles.slice(-4);
+  const prior = candles.slice(-12, -4);
+  const upperWick = last.high - Math.max(last.open, last.close);
+  const body = Math.abs(last.close - last.open) || atrNow * 0.05;
+  const priceRejection = upperWick > body * 1.15 && last.close < last.high - atrNow * 0.22;
+  const failedHighFollowThrough = Number.isFinite(rangeHigh) && last.close < rangeHigh - atrNow * 0.15;
+  const recentTakerBuyPct = candleTakerBuyPct(recent);
+  const priorTakerBuyPct = candleTakerBuyPct(prior);
+  const takerBuyWeakening = Number.isFinite(recentTakerBuyPct) && (
+    recentTakerBuyPct <= 50 || (Number.isFinite(priorTakerBuyPct) && recentTakerBuyPct <= priorTakerBuyPct - 4)
+  );
+  const volumeClimax = volumeRatio >= 1.35 && priceRejection;
+  const oi = oiContext(openInterestHistory);
+  const oiLongTrap = oi.available && oi.changePct >= 2 && priceRejection;
+  const oiCooling = oi.available && oi.recentChangePct <= -0.5 && failedHighFollowThrough;
+  const checks = [
+    ["priceRejection", priceRejection],
+    ["failedHighFollowThrough", failedHighFollowThrough],
+    ["takerBuyWeakening", takerBuyWeakening],
+    ["volumeClimax", volumeClimax],
+    ["oiLongTrap", oiLongTrap],
+    ["oiCooling", oiCooling],
+  ];
+  const passed = checks.filter(([, ok]) => ok).map(([name]) => name);
+  return {
+    score: passed.length,
+    passed,
+    oi,
+    priceRejection,
+    failedHighFollowThrough,
+    takerBuyWeakening,
+    volumeClimax,
+    recentTakerBuyPct,
+    priorTakerBuyPct,
+    takerBuyPct,
+  };
 }
 
 function shouldRefineWideSetup(plan) {
@@ -3702,16 +3919,16 @@ function refineWidePlanWith5m(originalPlan, scenario, context15m, candles5m = []
       },
     });
   } else {
-    const preference = scenario === "Range low bounce" || scenario === "Range after pump" ? "deep" : scenario === "Breakout retest" ? "breakout" : "near";
+    const preference = scenario === "Range low bounce" || scenario === "Range after pump" ? "deep" : (scenario === "Breakout retest" || scenario === "Momentum continuation long") ? "breakout" : "near";
     const anchorPool = scenario === "Range low bounce"
       ? [rangeLow5m, ...levels5m.lows, ma25_5m, vwap5m]
-      : scenario === "Breakout retest"
+      : (scenario === "Breakout retest" || scenario === "Momentum continuation long")
         ? [rangeHigh5m, ...levels5m.highs, vwap5m, ma7_5m]
         : scenario === "Range after pump"
           ? [rangeLow5m, ...levels5m.lows, vwap5m, ma25_5m, ma7_5m]
           : [vwap5m, ma25_5m, ma7_5m, ...levels5m.lows, rangeLow5m];
     const entryAnchor = bestZoneAnchor(anchorPool, priceNow, atr5m, "long", preference);
-    const entryZone = zoneAround(entryAnchor, atr5m, scenario === "Breakout retest" ? 0.24 : 0.32);
+    const entryZone = zoneAround(entryAnchor, atr5m, (scenario === "Breakout retest" || scenario === "Momentum continuation long") ? 0.24 : 0.32);
     const structuralLow = nearestBelow([rangeLow5m, ...levels5m.lows, vwap5m, ma25_5m], entryZone.from, entryZone.from - atr5m);
     const stop = Math.max(0, Math.min(structuralLow - atr5m * 0.25, entryZone.from - atr5m * 0.60));
     const tp1 = nearestAbove([rangeHigh5m, ...levels5m.highs, vwap5m, ma25_5m], entryZone.to, entryZone.to + atr5m * 1.1);
@@ -3836,9 +4053,20 @@ function entryConfirmProfile(trade, current = null) {
     if (Number.isFinite(highDist) && highDist < 2) return ENTRY_CONFIRM_PROFILES.pullbackNearHigh;
     return ENTRY_CONFIRM_PROFILES.pullback;
   }
+  if (scenario === "Momentum continuation long") {
+    if (Number.isFinite(highDist) && highDist < 1.5) return ENTRY_CONFIRM_PROFILES.momentumContinuationHot;
+    return ENTRY_CONFIRM_PROFILES.momentumContinuation;
+  }
   if (scenario === "Range low bounce") return ENTRY_CONFIRM_PROFILES.rangeLowBounce;
   if (scenario === "Too hot / top watch") return ENTRY_CONFIRM_PROFILES.tooHot;
-  if (scenario === "Top rejection short") return ENTRY_CONFIRM_PROFILES.rejection;
+  if (scenario === "Top rejection short") {
+    const futuresShort = trade?.futuresShortConfirmation || trade?.market?.metadata?.futuresShortConfirmation;
+    const riskPct = Number(trade?.riskPct ?? trade?.planSnapshot?.riskPct);
+    if ((Number.isFinite(riskPct) && riskPct >= 6) || (Number(futuresShort?.score) || 0) < 3) {
+      return ENTRY_CONFIRM_PROFILES.rejectionStrict;
+    }
+    return ENTRY_CONFIRM_PROFILES.rejection;
+  }
   return ENTRY_CONFIRM_PROFILES.default;
 }
 
@@ -3853,6 +4081,7 @@ function tp1QualityBucket(tp1R) {
 function scenarioBaseScore(scenario) {
   if (scenario === "Top rejection short") return 72;
   if (scenario === "Range after pump") return 58;
+  if (scenario === "Momentum continuation long") return 54;
   if (scenario === "Range low bounce") return 62;
   if (scenario === "Pullback long") return 46;
   if (scenario === "Breakout retest") return 42;
@@ -3860,7 +4089,7 @@ function scenarioBaseScore(scenario) {
   return 34;
 }
 
-function qualityRating({ scenario, plan, volumeRatio, extensionAtr, distanceToZoneAtr, atrPct, rangePosition, reactionScore, setupMode, warnings, gainerRank, pump, session }) {
+function qualityRating({ scenario, plan, volumeRatio, extensionAtr, distanceToZoneAtr, atrPct, rangePosition, reactionScore, setupMode, warnings, gainerRank, pump, session, futuresShort }) {
   let score = scenarioBaseScore(scenario);
   const tp1R = rewardRiskRatio(plan.entry, plan.targets[0], plan.stop, plan.side);
   const distanceFromHighPct = Number(pump?.distanceFromHighPct);
@@ -3885,9 +4114,19 @@ function qualityRating({ scenario, plan, volumeRatio, extensionAtr, distanceToZo
       else if (distanceFromHighPct < 2) score -= 12;
       else if (distanceFromHighPct < 6) score -= 5;
     }
+  } else if (scenario === "Momentum continuation long") {
+    score += rangePosition >= 68 && rangePosition <= 92 ? 9 : -10;
+    score += extensionAtr >= 0.75 && extensionAtr <= 1.75 ? 8 : -8;
+    score += volumeRatio >= 1.15 ? 8 : 0;
+    if (Number.isFinite(distanceFromHighPct)) {
+      if (distanceFromHighPct >= 1.5 && distanceFromHighPct <= 6) score += 9;
+      else if (distanceFromHighPct < 0.8) score -= 14;
+      else if (distanceFromHighPct > 9) score -= 8;
+    }
   } else if (scenario === "Top rejection short") {
     score += extensionAtr >= 1.15 ? 10 : -10;
     score += rangePosition >= 68 ? 8 : -6;
+    score += clamp(((Number(futuresShort?.score) || 0) - 2) * 8, -16, 18);
     if (session === "večer") score -= 10;
     if (Number.isFinite(gainerRank) && gainerRank <= 3) score += 8;
     if (Number.isFinite(gainerRank) && gainerRank >= 11) score -= 14;
@@ -3927,7 +4166,7 @@ function qualityRating({ scenario, plan, volumeRatio, extensionAtr, distanceToZo
   return clamp(Math.round(score), 0, 100);
 }
 
-function analyzeGainer(ticker, candles, book = null, candles1h = [], gainerRank = null, candles5m = []) {
+function analyzeGainer(ticker, candles, book = null, candles1h = [], gainerRank = null, candles5m = [], openInterestHistory = []) {
   const closes = candles.map((candle) => candle.close);
   const last = candles.at(-1);
   const atrNow = atr(candles);
@@ -3980,17 +4219,29 @@ function analyzeGainer(ticker, candles, book = null, candles1h = [], gainerRank 
   if (scenario === "Pullback long" && volumeRatio < 0.8) warnings.push("Long pullback má slabší volume kontext.");
   if (scenario === "Pullback long" && rangePosition > 80) warnings.push("Pullback long je príliš vysoko v range.");
   if (scenario === "Pullback long" && Number.isFinite(pump.distanceFromHighPct) && pump.distanceFromHighPct < 2) warnings.push("Pullback long je príliš blízko high, čakať reclaim po pullbacku.");
+  if (scenario === "Momentum continuation long" && volumeRatio < 1.05) warnings.push("Momentum continuation potrebuje silnejší aktuálny volume.");
+  if (scenario === "Momentum continuation long" && extensionAtr > 2.05) warnings.push("Momentum continuation je už príliš natiahnutý, nechaseovať bez retestu.");
+  if (scenario === "Momentum continuation long" && Number.isFinite(pump.distanceFromHighPct) && pump.distanceFromHighPct < 0.8) warnings.push("Momentum je extrémne blízko high, čakať mikro retest/reclaim.");
+  if (scenario === "Momentum continuation long" && rangePosition > 96) warnings.push("Momentum continuation je úplne na hornej hrane range.");
   if ((scenario === "Top rejection short" || scenario === "Too hot / top watch") && extensionAtr < 1.1) warnings.push("Short rejection nemá dostatočné natiahnutie.");
   const currentSession = sessionLabel();
+  const futuresShort = scenario === "Top rejection short"
+    ? shortFuturesConfirmation({ candles, last, atrNow, rangeHigh, volumeRatio, takerBuyPct, openInterestHistory })
+    : null;
+  if (scenario === "Top rejection short" && Number.isFinite(tp1R) && tp1R > 1) warnings.push("Top rejection short má TP1 ďaleko voči risku, dáta favorizujú rýchlejšie zabezpečenie.");
   if (scenario === "Top rejection short" && currentSession === "večer") warnings.push("Večerný Top rejection short má slabšie výsledky v dátach.");
   if (scenario === "Top rejection short" && Number.isFinite(gainerRank) && gainerRank >= 11) warnings.push("Top rejection short mimo TOP 10 mal slabšie výsledky.");
+  if (scenario === "Top rejection short" && plan.riskPct >= 8) warnings.push("Top rejection short má risk nad 8%, podľa dát len watch.");
+  if (scenario === "Top rejection short" && futuresShort?.score < 2) warnings.push("Top rejection short nemá dosť futures potvrdení: chýba OI/taker/volume odmietnutie.");
+  if (scenario === "Top rejection short" && plan.riskPct >= 6 && futuresShort?.score < 3) warnings.push("Široký Top rejection short potrebuje aspoň 3 futures potvrdenia.");
+  if (scenario === "Top rejection short" && ["deň", "večer"].includes(currentSession) && futuresShort?.score < 3) warnings.push("Denný/večerný Top rejection short potrebuje silnejšie futures potvrdenie.");
   if (scenario === "Too hot / top watch") warnings.push("Too hot je len watch, nie high-confidence obchod bez potvrdeného rejectionu.");
   const setupMode = scenario === "Too hot / top watch" || scenario === "Range after pump" ? "watch" : "trade";
   const tradable = setupMode === "trade" && warnings.length === 0;
   const state = `${setupMode === "watch" ? "paper watch" : "paper trade"} | ${distanceToZoneAtr <= 0.45 ? "ready zone" : "forming"}`;
   const atrPct = atrNow ? (atrNow / last.close) * 100 : NaN;
-  const rating = qualityRating({ scenario, plan, volumeRatio, extensionAtr, distanceToZoneAtr, atrPct, rangePosition, reactionScore, setupMode, warnings, gainerRank, pump, session: currentSession });
-  const entryProfile = entryConfirmProfile({ scenario, side: plan.side, market: { metadata: { pump } } });
+  const rating = qualityRating({ scenario, plan, volumeRatio, extensionAtr, distanceToZoneAtr, atrPct, rangePosition, reactionScore, setupMode, warnings, gainerRank, pump, session: currentSession, futuresShort });
+  const entryProfile = entryConfirmProfile({ scenario, side: plan.side, riskPct: plan.riskPct, futuresShortConfirmation: futuresShort, market: { metadata: { pump, futuresShortConfirmation: futuresShort } } });
 
   return {
     id: ticker.symbol,
@@ -4014,6 +4265,7 @@ function analyzeGainer(ticker, candles, book = null, candles1h = [], gainerRank 
     rangeLow,
     volumeRatio,
     takerBuyPct,
+    futuresShortConfirmation: futuresShort,
     extensionAtr,
     scenario,
     state,
@@ -4032,6 +4284,7 @@ function analyzeGainer(ticker, candles, book = null, candles1h = [], gainerRank 
       },
       higherTimeframe,
       liquidity,
+      futuresShortConfirmation: futuresShort,
       decision: {
         setupMode,
         session: currentSession,
@@ -4072,6 +4325,7 @@ function scenarioText(item) {
   const p = item.plan;
   if (p.refinement?.mode === "5m-wide-setup") return `${p.note} Wide setup je spresnený cez 5m pre entry/SL/TP1.`;
   if (item.setupMode === "watch") return `${p.note} Paper sa pustí kvôli dátam, ale setup je označený ako watch.`;
+  if (item.scenario === "Momentum continuation long") return "Coin rastie bez hlbšieho pullbacku. Nechaseovať sviečku, čakať mikro retest alebo reclaim momentum zóny.";
   if (item.scenario === "Pullback long") return "Trend stále žije, ale vstup dáva zmysel až pri pullbacku do VWAP/MA/support zóny.";
   if (item.scenario === "Breakout retest") return "Cena tlačí high. Nehnať breakout, čakať retest predošlého high alebo VWAP zóny.";
   if (item.scenario === "Top rejection short") return "Coin je po pumpe vysoko. Short len po odmietnutí high, stop až za štruktúrou.";
@@ -4236,12 +4490,13 @@ async function scanLive() {
       .map((ticker, index) => ({ ...ticker, gainerRank: index + 1 }));
     const books = await bookTickers().catch(() => ({}));
     const analyses = await Promise.allSettled(top.map(async (ticker) => {
-      const [candles15m, candles1h, candles5m] = await Promise.all([
+      const [candles15m, candles1h, candles5m, oiHistory] = await Promise.all([
         klines(ticker.symbol, "15m"),
         klines(ticker.symbol, "1h", 48),
         klines(ticker.symbol, "5m", 180),
+        openInterestHist(ticker.symbol, "5m", 12).catch(() => []),
       ]);
-      return analyzeGainer(ticker, candles15m, books[ticker.symbol], candles1h, ticker.gainerRank, candles5m);
+      return analyzeGainer(ticker, candles15m, books[ticker.symbol], candles1h, ticker.gainerRank, candles5m, oiHistory);
     }));
     gainers = analyses
       .filter((result) => result.status === "fulfilled")
@@ -4654,6 +4909,9 @@ function updateTradeTracking(trade, current, stamp = new Date().toISOString()) {
   trade.mae = Math.min(Number(trade.mae) || 0, livePct);
   trade.mfeBeforeClose = trade.mfe;
   trade.timeInTrade = timeAgo(trade.openedAt, stamp);
+  const path = appendPathSample(trade, current, livePct, stamp);
+  trade.pricePath = path.pricePath;
+  trade.pathMeta = path.pathMeta;
   trade.liveWarnings = runtimeWarnings(trade, stamp);
   trade.quality = {
     ...(trade.quality || {}),
@@ -4665,6 +4923,13 @@ function updateTradeTracking(trade, current, stamp = new Date().toISOString()) {
     entryConfirmedAt: trade.entryConfirmedAt || null,
     entryConfirmedPrice: trade.entryConfirmedPrice ?? null,
     mfeBeforeClose: trade.mfeBeforeClose,
+    pathMeta: trade.pathMeta,
+    mfeMaeRatio: trade.pathMeta?.mfeMaeRatio,
+    netExcursionEdge: trade.pathMeta?.netExcursionEdge,
+    excursionEfficiency: trade.pathMeta?.excursionEfficiency,
+    maeBeforePlus1: trade.pathMeta?.maeBeforePlus1,
+    maeBeforePlus3: trade.pathMeta?.maeBeforePlus3,
+    maeBeforePlus5: trade.pathMeta?.maeBeforePlus5,
     liveWarnings: trade.liveWarnings,
     noTp1Failure: false,
   };
@@ -4754,6 +5019,13 @@ function journalEntryFromTrade(trade, exit, reason, status = "closed", stamp = n
     shortConfirmAfterTouch: trade.side === "short" ? Boolean(trade.shortConfirmAfterTouch) : null,
     noTp1Failure: closedWithoutTp1,
     mfeBeforeClose,
+    pathMeta: trade.pathMeta || trade.quality?.pathMeta || null,
+    mfeMaeRatio: trade.pathMeta?.mfeMaeRatio ?? trade.quality?.mfeMaeRatio,
+    netExcursionEdge: trade.pathMeta?.netExcursionEdge ?? trade.quality?.netExcursionEdge,
+    excursionEfficiency: trade.pathMeta?.excursionEfficiency ?? trade.quality?.excursionEfficiency,
+    maeBeforePlus1: trade.pathMeta?.maeBeforePlus1 ?? trade.quality?.maeBeforePlus1,
+    maeBeforePlus3: trade.pathMeta?.maeBeforePlus3 ?? trade.quality?.maeBeforePlus3,
+    maeBeforePlus5: trade.pathMeta?.maeBeforePlus5 ?? trade.quality?.maeBeforePlus5,
     liveWarnings: dedupeWarnings([...(trade.liveWarnings || []), ...((trade.quality || {}).liveWarnings || [])]),
   };
   const warnings = dedupeWarnings([...(trade.warnings || []), ...(trade.liveWarnings || []), ...(quality.liveWarnings || [])]);
@@ -4788,6 +5060,14 @@ function journalEntryFromTrade(trade, exit, reason, status = "closed", stamp = n
     entryConfirmedPrice: trade.entryConfirmedPrice ?? null,
     noTp1Failure: closedWithoutTp1,
     mfeBeforeClose,
+    pricePath: trade.pricePath || [],
+    pathMeta: quality.pathMeta,
+    mfeMaeRatio: quality.mfeMaeRatio,
+    netExcursionEdge: quality.netExcursionEdge,
+    excursionEfficiency: quality.excursionEfficiency,
+    maeBeforePlus1: quality.maeBeforePlus1,
+    maeBeforePlus3: quality.maeBeforePlus3,
+    maeBeforePlus5: quality.maeBeforePlus5,
     quality,
     warnings,
     riskPct: trade.riskPct ?? absMovePct(trade.entry, trade.stop),
@@ -4889,6 +5169,7 @@ function parseManualAnalysisRows(text) {
     "Top rejection short",
     "Too hot / top watch",
     "Range after pump",
+    "Momentum continuation long",
     "Range low bounce",
     "Breakout retest",
   ]);
@@ -4946,6 +5227,13 @@ function journalToAnalysisRows() {
     entryConfirmedPrice: row.entryConfirmedPrice ?? row.quality?.entryConfirmedPrice,
     noTp1Failure: row.noTp1Failure ?? row.quality?.noTp1Failure ?? (!String(row.tpHit || "").toLowerCase().includes("tp1") && row.outcome === "Loss"),
     mfeBeforeClose: row.mfeBeforeClose ?? row.quality?.mfeBeforeClose ?? row.mfe,
+    pathMeta: row.pathMeta ?? row.quality?.pathMeta ?? null,
+    mfeMaeRatio: row.mfeMaeRatio ?? row.quality?.mfeMaeRatio,
+    netExcursionEdge: row.netExcursionEdge ?? row.quality?.netExcursionEdge,
+    excursionEfficiency: row.excursionEfficiency ?? row.quality?.excursionEfficiency,
+    maeBeforePlus1: row.maeBeforePlus1 ?? row.quality?.maeBeforePlus1,
+    maeBeforePlus3: row.maeBeforePlus3 ?? row.quality?.maeBeforePlus3,
+    maeBeforePlus5: row.maeBeforePlus5 ?? row.quality?.maeBeforePlus5,
     quality: row.quality || null,
     riskPct: row.riskPct,
     tp1R: row.tp1R,
@@ -5211,6 +5499,10 @@ function analysisTradeCard(row) {
       <span>TP <b>${row.tpHit || "nie"}</b></span>
       <span>Result <b class="${row.resultPct >= 0 ? "positive" : "negative"}">${pct(row.resultPct)}</b></span>
       <span>MFE/MAE <b><em class="positive">${pct(row.mfe)}</em> / <em class="negative">${pct(row.mae)}</em></b></span>
+      <span>Path <b>${pathMetaLabel(row)}</b></span>
+      <span>Eff <b>${pct(row.excursionEfficiency, 0)}</b></span>
+      <span>MFE/MAE R <b>${ratioLabel(row.mfeMaeRatio)}</b></span>
+      <span>MAE pred +3 <b class="negative">${pct(row.maeBeforePlus3)}</b></span>
       <span>High dist <b>${pct(row.distanceFromHighAtOpen)}</b></span>
       <span>TP1/R <b class="${Number(row.tp1R) < 0.4 ? "warning" : "positive"}">${fmt(row.tp1R, 2)}</b></span>
       <span>Confirm <b>${row.entryConfirmType || "-"}</b></span>
@@ -5220,6 +5512,29 @@ function analysisTradeCard(row) {
       <span>TP1 <b>${clockTime(row.tp1At)}</b></span>
       <span>${row.account || "Paper"}</span>
     </article>
+  `;
+}
+
+function averageNumber(rows, getValue) {
+  const values = rows.map(getValue).map(Number).filter(Number.isFinite);
+  return values.length ? average(values) : NaN;
+}
+
+function excursionSummaryHtml(rows) {
+  const withPath = rows.filter((row) => Number(row.pathMeta?.sampleCount) > 1 || Number.isFinite(Number(row.excursionEfficiency)));
+  if (!withPath.length) return `<p>Nové path metriky sa začnú plniť pri ďalších webových paper tradoch.</p>`;
+  const avgRatio = averageNumber(withPath, (row) => row.mfeMaeRatio);
+  const avgEfficiency = averageNumber(withPath, (row) => row.excursionEfficiency);
+  const avgEdge = averageNumber(withPath, (row) => row.netExcursionEdge);
+  const avgMaeBeforePlus3 = averageNumber(withPath, (row) => row.maeBeforePlus3);
+  return `
+    <div class="analysis-bars compact">
+      <div class="analysis-bar"><div><strong>Path samples</strong><small>${withPath.length} / ${rows.length} trades</small></div><i style="width:${rows.length ? (withPath.length / rows.length) * 100 : 0}%"></i><span>${withPath.length}</span></div>
+      <div class="analysis-bar"><div><strong>Avg MFE/MAE</strong><small>potenciál voči bolesti</small></div><i style="width:60%"></i><span>${ratioLabel(avgRatio)}</span></div>
+      <div class="analysis-bar"><div><strong>Avg efficiency</strong><small>MFE / (MFE + abs(MAE))</small></div><i style="width:${Math.max(4, Math.min(100, Number(avgEfficiency) || 0))}%"></i><span>${pct(avgEfficiency, 0)}</span></div>
+      <div class="analysis-bar"><div><strong>Avg edge</strong><small>MFE - abs(MAE)</small></div><i class="${Number(avgEdge) < 0 ? "loss" : ""}" style="width:${Math.max(4, Math.min(100, Math.abs(Number(avgEdge) || 0) * 8))}%"></i><span class="${Number(avgEdge) >= 0 ? "positive" : "negative"}">${pct(avgEdge)}</span></div>
+      <div class="analysis-bar"><div><strong>Avg MAE pred +3%</strong><small>bolesť pred prvým +3%</small></div><i class="loss" style="width:${Math.max(4, Math.min(100, Math.abs(Number(avgMaeBeforePlus3) || 0) * 10))}%"></i><span class="negative">${pct(avgMaeBeforePlus3)}</span></div>
+    </div>
   `;
 }
 
@@ -5246,6 +5561,7 @@ function renderAnalysis() {
   ui.analysisSideBars.innerHTML = analysisBarHtml(groupRows(rows, "side"));
   ui.analysisRatingBars.innerHTML = analysisBarHtml(groupRows(rows, ratingBucket));
   ui.analysisSetupSideBars.innerHTML = analysisBarHtml(groupRows(rows, setupSideKey));
+  if (ui.analysisExcursionSummary) ui.analysisExcursionSummary.innerHTML = excursionSummaryHtml(rows);
   const monthGroups = groupRows(rows, monthKey);
   const weekGroups = groupRows(rows, weekKey);
   const monthStates = readPeriodStates(ui.analysisMonths);
@@ -5322,6 +5638,7 @@ async function updatePaper() {
     if (entryDecision(trade, current) === "open") {
       const openedAt = new Date().toISOString();
       const openedTrade = normalizeTradeAtOpen(trade, current);
+      const initialPath = appendPathSample({ openedAt, pricePath: [] }, current, 0, openedAt);
       nextActive.push({
         ...openedTrade,
         status: "active",
@@ -5332,6 +5649,8 @@ async function updatePaper() {
         mfe: 0,
         mae: 0,
         timeInTrade: "0m",
+        pricePath: initialPath.pricePath,
+        pathMeta: initialPath.pathMeta,
         lastCheckedAt: openedAt,
       });
     } else {
@@ -5438,6 +5757,10 @@ function tradeCard(trade, active = false) {
           <span>Live PnL <b class="${currentPct >= 0 ? "positive" : "negative"}">${pct(currentPct)}</b></span>
           <span>MFE <b class="positive">${pct(trade.mfe || 0)}</b></span>
           <span>MAE <b class="negative">${pct(trade.mae || 0)}</b></span>
+          <span>Path <b>${pathMetaLabel(trade)}</b></span>
+          <span>Eff <b>${pct(trade.pathMeta?.excursionEfficiency, 0)}</b></span>
+          <span>MFE/MAE <b>${ratioLabel(trade.pathMeta?.mfeMaeRatio)}</b></span>
+          <span>MAE pred +3 <b class="negative">${pct(trade.pathMeta?.maeBeforePlus3)}</b></span>
           <span>Time <b>${trade.timeInTrade || timeAgo(trade.openedAt)}</b></span>
           <span>TP1 at <b>${dateTimeLabel(trade.tp1At || trade.targets.find((target) => target.label === "TP1")?.hitAt)}</b></span>
           <span>TP1 after <b>${trade.timeToTp1 || "-"}</b></span>
@@ -5571,10 +5894,11 @@ ui.refreshCoinButton.addEventListener("click", async () => {
   if (!selected) return;
   const ticker = await json(`${API}/fapi/v1/ticker/24hr?symbol=${selected.pair}`);
   const book = await json(`${API}/fapi/v1/ticker/bookTicker?symbol=${selected.pair}`).catch(() => null);
-  const [candles15m, candles1h, candles5m] = await Promise.all([
+  const [candles15m, candles1h, candles5m, oiHistory] = await Promise.all([
     klines(selected.pair, "15m"),
     klines(selected.pair, "1h", 48),
     klines(selected.pair, "5m", 180),
+    openInterestHist(selected.pair, "5m", 12).catch(() => []),
   ]);
   const updated = analyzeGainer(
     { ...ticker, gainerRank: selected.gainerRank },
@@ -5583,6 +5907,7 @@ ui.refreshCoinButton.addEventListener("click", async () => {
     candles1h,
     selected.gainerRank,
     candles5m,
+    oiHistory,
   );
   gainers = gainers.map((item) => item.pair === updated.pair ? updated : item).sort((a, b) => b.rating - a.rating || b.dayChange - a.dayChange);
   selectGainer(updated.pair);
