@@ -17,6 +17,8 @@
         <button class="active" data-view="dashboard">Dashboard</button>
         <button data-view="pump">Pump rank</button>
         <button data-view="paper">Paper Lab</button>
+        <button data-view="intuition">Intuition Lab</button>
+        <button data-view="intuitionJournal">Intuition Journal</button>
         <button data-view="journal">Journal</button>
         <button data-view="analysis">Analysis</button>
       </nav>
@@ -146,6 +148,93 @@
           <div class="chart-wrap">
             <iframe id="paperChartFrame" title="Paper Lab chart" loading="lazy"></iframe>
           </div>
+        </section>
+      </section>
+
+      <section class="view" data-panel="intuition">
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">Intuition Lab</span>
+            <h1>Intuitívne long / short trady</h1>
+          </div>
+          <p id="intuitionStatus">Čakám na scan.</p>
+        </div>
+
+        <div class="intuition-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>TOP 15 podľa pumpy</h2>
+              <span id="intuitionGainersMeta">0 gainers</span>
+            </div>
+            <div class="intuition-gainer-list" id="intuitionGainerList"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Intuition trades</h2>
+              <span id="intuitionTradesMeta">0 open</span>
+            </div>
+            <div class="summary-grid" id="intuitionSummary"></div>
+            <div class="intuition-trades-grid">
+              <section>
+                <h2>Čakajúce triggery</h2>
+                <div class="trade-stack" id="intuitionWaitingList"></div>
+              </section>
+              <section>
+                <h2>Aktívne</h2>
+                <div class="trade-stack" id="intuitionActiveList"></div>
+              </section>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel chart-panel">
+          <div class="panel-head">
+            <h2>Intuition graf</h2>
+            <span id="intuitionChartMeta">vybraný coin | 15m</span>
+          </div>
+          <div class="chart-wrap">
+            <iframe id="intuitionChartFrame" title="Intuition Lab chart" loading="lazy"></iframe>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" data-panel="intuitionJournal">
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">Intuition review</span>
+            <h1>Intuition Journal</h1>
+          </div>
+          <p id="intuitionJournalMeta">0 closed</p>
+        </div>
+
+        <section class="panel">
+          <div class="summary-grid" id="intuitionJournalSummary"></div>
+        </section>
+
+        <div class="analysis-grid">
+          <details class="panel analysis-toggle-panel" open>
+            <summary class="panel-head">
+              <h2>Long / Short</h2>
+              <span>intuícia podľa smeru</span>
+            </summary>
+            <div class="analysis-bars" id="intuitionSideBars"></div>
+          </details>
+          <details class="panel analysis-toggle-panel" open>
+            <summary class="panel-head">
+              <h2>Excursion quality</h2>
+              <span>MFE oproti MAE</span>
+            </summary>
+            <div id="intuitionExcursionSummary"></div>
+          </details>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Dni</h2>
+            <span id="intuitionDaysMeta">uzavreté intuition trady</span>
+          </div>
+          <div class="analysis-days" id="intuitionDays"></div>
         </section>
       </section>
 

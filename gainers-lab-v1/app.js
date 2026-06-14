@@ -1,6 +1,7 @@
 const API = "https://fapi.binance.com";
 const STORE = {
   paper: "gainers-lab-v1-paper",
+  intuition: "gainers-lab-v1-intuition",
   journal: "gainers-lab-v1-journal",
   analysisManual: "gainers-lab-v1-analysis-manual",
   analysisManualPatch: "gainers-lab-v1-analysis-manual-patch-2026-05-22-service-pc",
@@ -2781,6 +2782,21 @@ const ui = {
   chartMeta: document.getElementById("chartMeta"),
   paperChartFrame: document.getElementById("paperChartFrame"),
   paperChartMeta: document.getElementById("paperChartMeta"),
+  intuitionStatus: document.getElementById("intuitionStatus"),
+  intuitionGainersMeta: document.getElementById("intuitionGainersMeta"),
+  intuitionGainerList: document.getElementById("intuitionGainerList"),
+  intuitionTradesMeta: document.getElementById("intuitionTradesMeta"),
+  intuitionSummary: document.getElementById("intuitionSummary"),
+  intuitionWaitingList: document.getElementById("intuitionWaitingList"),
+  intuitionActiveList: document.getElementById("intuitionActiveList"),
+  intuitionChartFrame: document.getElementById("intuitionChartFrame"),
+  intuitionChartMeta: document.getElementById("intuitionChartMeta"),
+  intuitionJournalMeta: document.getElementById("intuitionJournalMeta"),
+  intuitionJournalSummary: document.getElementById("intuitionJournalSummary"),
+  intuitionSideBars: document.getElementById("intuitionSideBars"),
+  intuitionExcursionSummary: document.getElementById("intuitionExcursionSummary"),
+  intuitionDaysMeta: document.getElementById("intuitionDaysMeta"),
+  intuitionDays: document.getElementById("intuitionDays"),
   waitingMeta: document.getElementById("waitingMeta"),
   activeMeta: document.getElementById("activeMeta"),
   waitingTrades: document.getElementById("waitingTrades"),
@@ -3658,6 +3674,11 @@ function syncChart(pair, target = "both") {
     ui.paperChartFrame.src = url;
   }
   if ((target === "both" || target === "paper") && ui.paperChartMeta) ui.paperChartMeta.textContent = `${pair} | 15m`;
+  if ((target === "both" || target === "intuition") && ui.intuitionChartFrame && ui.intuitionChartFrame.dataset.url !== url) {
+    ui.intuitionChartFrame.dataset.url = url;
+    ui.intuitionChartFrame.src = url;
+  }
+  if ((target === "both" || target === "intuition") && ui.intuitionChartMeta) ui.intuitionChartMeta.textContent = `${pair} | 15m`;
 }
 
 function classifyScenario(data) {
@@ -4505,6 +4526,7 @@ async function scanLive() {
     const preferred = localStorage.getItem(STORE.selected);
     selected = gainers.find((item) => item.pair === preferred) || gainers[0] || null;
     renderGainers();
+    renderIntuition();
     if (selected) selectGainer(selected.pair);
     recordDaySnapshot("live-scan");
     ui.scanStatus.textContent = `Live scan hotový: ${gainers.length} top gainers, dashboard podľa ratingu, pump rank podľa 24h gainu.`;
@@ -4523,6 +4545,187 @@ function paperState() {
 
 function savePaper(state) {
   storeSet(STORE.paper, state);
+}
+
+function intuitionState() {
+  const state = storeGet(STORE.intuition, { waiting: [], active: [], closed: [] });
+  return {
+    waiting: Array.isArray(state.waiting) ? state.waiting : [],
+    active: Array.isArray(state.active) ? state.active : [],
+    closed: Array.isArray(state.closed) ? state.closed : [],
+  };
+}
+
+function saveIntuition(state) {
+  storeSet(STORE.intuition, {
+    waiting: Array.isArray(state.waiting) ? state.waiting : [],
+    active: Array.isArray(state.active) ? state.active : [],
+    closed: Array.isArray(state.closed) ? state.closed : [],
+  });
+}
+
+function intuitionMovePct(trade, current) {
+  return movePct(Number(trade.entry), Number(current), trade.side);
+}
+
+function normalizeIntuitionTrigger(type, value, live) {
+  const triggerType = type || "market";
+  const triggerPrice = Number(value);
+  if (triggerType === "market" || !Number.isFinite(triggerPrice) || triggerPrice <= 0) {
+    return { triggerType: "market", triggerPrice: Number(live) || null };
+  }
+  return { triggerType, triggerPrice };
+}
+
+function intuitionTriggerHit(trade, current) {
+  if (trade.triggerType === "above") return current >= trade.triggerPrice;
+  if (trade.triggerType === "below") return current <= trade.triggerPrice;
+  return true;
+}
+
+function intuitionMarketSnapshot(gainer, stamp) {
+  return {
+    capturedAt: stamp,
+    rank: gainer?.gainerRank || gainer?.rank || null,
+    rating: gainer?.rating ?? null,
+    dayChange: gainer?.dayChange ?? null,
+    quoteVolume: gainer?.quoteVolume ?? null,
+    tradeCount: gainer?.tradeCount ?? null,
+    spreadPct: gainer?.spreadPct ?? null,
+    takerBuyPct: gainer?.takerBuyPct ?? null,
+    atrPct: gainer?.atrPct ?? null,
+    scenario: gainer?.scenario || null,
+  };
+}
+
+function createIntuitionTrade(gainer, side, triggerType, triggerPrice) {
+  const stamp = new Date().toISOString();
+  const live = Number(gainer.price);
+  const trigger = normalizeIntuitionTrigger(triggerType, triggerPrice, live);
+  const opened = trigger.triggerType === "market";
+  const initialPath = opened ? appendPathSample({ openedAt: stamp, pricePath: [] }, live, 0, stamp) : { pricePath: [], pathMeta: derivePathMeta([]) };
+  return {
+    id: uid("intuition"),
+    source: "intuition-web",
+    pair: gainer.pair,
+    side,
+    account: "Intuition",
+    scenario: "Intuition",
+    status: opened ? "active" : "waiting",
+    createdAt: stamp,
+    createdSession: sessionLabel(stamp),
+    openedAt: opened ? stamp : null,
+    openedSession: opened ? sessionLabel(stamp) : null,
+    closedAt: null,
+    entry: opened ? live : null,
+    exit: null,
+    live,
+    resultPct: opened ? 0 : null,
+    mfe: 0,
+    mae: 0,
+    timeInTrade: opened ? "0m" : "-",
+    triggerType: trigger.triggerType,
+    triggerPrice: trigger.triggerPrice,
+    market: intuitionMarketSnapshot(gainer, stamp),
+    pricePath: initialPath.pricePath,
+    pathMeta: initialPath.pathMeta,
+    lastCheckedAt: stamp,
+  };
+}
+
+function updateIntuitionTracking(trade, current, stamp = new Date().toISOString()) {
+  const resultPct = intuitionMovePct(trade, current);
+  if (!Number.isFinite(resultPct)) return trade;
+  const path = appendPathSample(trade, current, resultPct, stamp);
+  return {
+    ...trade,
+    live: current,
+    resultPct,
+    mfe: Math.max(Number(trade.mfe) || 0, resultPct),
+    mae: Math.min(Number(trade.mae) || 0, resultPct),
+    timeInTrade: timeAgo(trade.openedAt, stamp),
+    pricePath: path.pricePath,
+    pathMeta: path.pathMeta,
+    lastCheckedAt: stamp,
+  };
+}
+
+function startIntuitionFromGainer(pair, side, triggerType, triggerPrice) {
+  const gainer = gainers.find((item) => item.pair === pair);
+  if (!gainer) return;
+  const trade = createIntuitionTrade(gainer, side, triggerType, triggerPrice);
+  const state = intuitionState();
+  const next = trade.status === "active"
+    ? { ...state, active: [trade, ...state.active] }
+    : { ...state, waiting: [trade, ...state.waiting] };
+  saveIntuition(next);
+  syncChart(pair, "intuition");
+  renderIntuition();
+}
+
+function closeIntuitionTrade(id, reason = "manual-close") {
+  const state = intuitionState();
+  const stamp = new Date().toISOString();
+  const trade = state.active.find((item) => item.id === id);
+  if (!trade) return null;
+  const current = Number(trade.live) || Number(trade.entry);
+  const tracked = updateIntuitionTracking(trade, current, stamp);
+  const closed = {
+    ...tracked,
+    status: "closed",
+    exit: current,
+    closedAt: stamp,
+    closedSession: sessionLabel(stamp),
+    closeReason: reason,
+  };
+  saveIntuition({
+    waiting: state.waiting,
+    active: state.active.filter((item) => item.id !== id),
+    closed: [closed, ...state.closed],
+  });
+  renderIntuition();
+  renderIntuitionJournal();
+  return closed;
+}
+
+function flipIntuitionTrade(id) {
+  const closed = closeIntuitionTrade(id, "flip");
+  if (!closed) return;
+  const stamp = new Date().toISOString();
+  const side = closed.side === "short" ? "long" : "short";
+  const initialPath = appendPathSample({ openedAt: stamp, pricePath: [] }, closed.exit, 0, stamp);
+  const opened = {
+    ...closed,
+    id: uid("intuition"),
+    side,
+    status: "active",
+    createdAt: stamp,
+    openedAt: stamp,
+    openedSession: sessionLabel(stamp),
+    closedAt: null,
+    exit: null,
+    entry: closed.exit,
+    resultPct: 0,
+    mfe: 0,
+    mae: 0,
+    triggerType: "market",
+    triggerPrice: closed.exit,
+    flippedFrom: closed.id,
+    pricePath: initialPath.pricePath,
+    pathMeta: initialPath.pathMeta,
+    timeInTrade: "0m",
+    lastCheckedAt: stamp,
+  };
+  const state = intuitionState();
+  saveIntuition({ ...state, active: [opened, ...state.active] });
+  renderIntuition();
+  renderIntuitionJournal();
+}
+
+function cancelIntuitionWaiting(id) {
+  const state = intuitionState();
+  saveIntuition({ ...state, waiting: state.waiting.filter((trade) => trade.id !== id) });
+  renderIntuition();
 }
 
 function journal() {
@@ -5705,6 +5908,47 @@ async function updatePaper() {
   renderJournal();
 }
 
+async function updateIntuition() {
+  const state = intuitionState();
+  if (!state.waiting.length && !state.active.length) return;
+  const stamp = new Date().toISOString();
+  const pairs = [...new Set([...state.waiting, ...state.active].map((trade) => trade.pair))];
+  const priceMap = {};
+  await Promise.allSettled(pairs.map(async (pair) => { priceMap[pair] = await price(pair); }));
+  const nextWaiting = [];
+  const nextActive = [];
+  state.waiting.forEach((trade) => {
+    const current = priceMap[trade.pair];
+    if (!Number.isFinite(current)) {
+      nextWaiting.push(trade);
+      return;
+    }
+    const liveTrade = { ...trade, live: current, lastCheckedAt: stamp };
+    if (intuitionTriggerHit(liveTrade, current)) {
+      nextActive.push(updateIntuitionTracking({
+        ...liveTrade,
+        status: "active",
+        entry: current,
+        openedAt: stamp,
+        openedSession: sessionLabel(stamp),
+        mfe: 0,
+        mae: 0,
+        pricePath: [],
+        pathMeta: derivePathMeta([]),
+      }, current, stamp));
+    } else {
+      nextWaiting.push(liveTrade);
+    }
+  });
+  state.active.forEach((trade) => {
+    const current = priceMap[trade.pair];
+    nextActive.push(Number.isFinite(current) ? updateIntuitionTracking(trade, current, stamp) : trade);
+  });
+  saveIntuition({ waiting: nextWaiting, active: nextActive, closed: state.closed });
+  renderIntuition();
+  renderIntuitionJournal();
+}
+
 function cancelWaiting(id) {
   const state = paperState();
   savePaper({ ...state, waiting: state.waiting.filter((trade) => trade.id !== id) });
@@ -5799,6 +6043,201 @@ function renderPaper() {
   });
 }
 
+function intuitionStats(rows = []) {
+  const wins = rows.filter((row) => Number(row.resultPct) > 0).length;
+  const losses = rows.filter((row) => Number(row.resultPct) <= 0).length;
+  const total = rows.reduce((sum, row) => sum + (Number(row.resultPct) || 0), 0);
+  const avgMfe = rows.length ? average(rows.map((row) => Number(row.mfe) || 0)) : 0;
+  const avgMae = rows.length ? average(rows.map((row) => Number(row.mae) || 0)) : 0;
+  return {
+    count: rows.length,
+    wins,
+    losses,
+    winrate: rows.length ? (wins / rows.length) * 100 : 0,
+    total,
+    avg: rows.length ? total / rows.length : 0,
+    avgMfe,
+    avgMae,
+  };
+}
+
+function renderIntuitionSummary(state) {
+  const stats = intuitionStats(state.closed);
+  if (!ui.intuitionSummary) return;
+  ui.intuitionSummary.innerHTML = `
+    <article><span>Closed</span><strong>${stats.count}</strong></article>
+    <article><span>WR</span><strong>${fmt(stats.winrate, 0)}%</strong></article>
+    <article><span>Avg</span><strong class="${stats.avg >= 0 ? "positive" : "negative"}">${pct(stats.avg)}</strong></article>
+    <article><span>Total</span><strong class="${stats.total >= 0 ? "positive" : "negative"}">${pct(stats.total)}</strong></article>
+    <article><span>Avg MFE</span><strong class="positive">${pct(stats.avgMfe)}</strong></article>
+    <article><span>Avg MAE</span><strong class="negative">${pct(stats.avgMae)}</strong></article>
+  `;
+}
+
+function renderIntuitionGainers() {
+  if (!ui.intuitionGainerList) return;
+  const controls = {};
+  ui.intuitionGainerList.querySelectorAll(".intuition-gainer-card[data-pair]").forEach((card) => {
+    controls[card.dataset.pair] = {
+      trigger: card.querySelector("[data-intuition-trigger]")?.value || "market",
+      price: card.querySelector("[data-intuition-price]")?.value || "",
+    };
+  });
+  const byPump = gainers.slice().sort((a, b) => (a.gainerRank || 999) - (b.gainerRank || 999)).slice(0, 15);
+  if (ui.intuitionGainersMeta) ui.intuitionGainersMeta.textContent = byPump.length ? `${byPump.length} gainers | pump order` : "0 gainers";
+  if (!byPump.length) {
+    ui.intuitionGainerList.innerHTML = `<p class="muted">Spusti Scan Live. Tu budú TOP 15 gainers pre intuitívne Long/Short.</p>`;
+    return;
+  }
+  ui.intuitionGainerList.innerHTML = byPump.map((item, index) => {
+    const control = controls[item.pair] || {};
+    const triggerValue = control.trigger || "market";
+    const priceValue = control.price || (Number(item.price) || "");
+    return `
+    <article class="intuition-gainer-card" data-pair="${item.pair}">
+      <div class="gainer-head">
+        <div>
+          <strong>#${index + 1} ${item.pair}</strong>
+          <span>Live <b>${fmt(item.price)}</b> | 24h <b class="${item.dayChange >= 0 ? "positive" : "negative"}">${pct(item.dayChange)}</b></span>
+        </div>
+        <span class="rating-chip">${Number.isFinite(item.rating) ? fmt(item.rating, 0) : "-"}</span>
+      </div>
+      <div class="intuition-trigger-row">
+        <select data-intuition-trigger>
+          <option value="market" ${triggerValue === "market" ? "selected" : ""}>market</option>
+          <option value="above" ${triggerValue === "above" ? "selected" : ""}>above</option>
+          <option value="below" ${triggerValue === "below" ? "selected" : ""}>below</option>
+        </select>
+        <input data-intuition-price type="number" step="any" value="${priceValue}">
+        <button class="secondary intuition-long" data-side="long" type="button">Long</button>
+        <button class="secondary danger intuition-short" data-side="short" type="button">Short</button>
+      </div>
+    </article>
+  `;
+  }).join("");
+  ui.intuitionGainerList.querySelectorAll(".intuition-gainer-card").forEach((card) => {
+    card.addEventListener("click", (event) => {
+      if (event.target.closest("button, input, select")) return;
+      syncChart(card.dataset.pair, "intuition");
+    });
+    card.querySelectorAll("[data-side]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        startIntuitionFromGainer(
+          card.dataset.pair,
+          button.dataset.side,
+          card.querySelector("[data-intuition-trigger]").value,
+          card.querySelector("[data-intuition-price]").value
+        );
+      });
+    });
+  });
+}
+
+function intuitionTradeCard(trade, type) {
+  const pnl = Number(trade.resultPct);
+  return `
+    <article class="trade-card intuition-card ${trade.side}" data-pair="${trade.pair}" data-id="${trade.id}">
+      <div class="trade-head">
+        <strong>${trade.pair} ${trade.side.toUpperCase()}</strong>
+        <span class="badge ${type === "active" ? "good" : "neutral"}">${type}</span>
+      </div>
+      <div class="metric-list">
+        <span>Entry <b>${fmt(trade.entry)}</b></span>
+        <span>Live <b>${fmt(trade.live)}</b></span>
+        <span>PnL <b class="${pnl >= 0 ? "positive" : "negative"}">${Number.isFinite(pnl) ? pct(pnl) : "-"}</b></span>
+        <span>MFE <b class="positive">${pct(trade.mfe || 0)}</b></span>
+        <span>MAE <b class="negative">${pct(trade.mae || 0)}</b></span>
+        <span>Path <b>${pathMetaLabel(trade)}</b></span>
+        <span>Eff <b>${pct(trade.pathMeta?.excursionEfficiency, 0)}</b></span>
+        <span>MFE/MAE <b>${ratioLabel(trade.pathMeta?.mfeMaeRatio)}</b></span>
+      </div>
+      <div class="trade-context">
+        <span>Created <b>${dateTimeLabel(trade.createdAt)}</b></span>
+        <span>Opened <b>${dateTimeLabel(trade.openedAt)}</b></span>
+        <span>Trigger <b>${trade.triggerType === "market" ? "market" : `${trade.triggerType} ${fmt(trade.triggerPrice)}`}</b></span>
+        <span>Time <b>${trade.timeInTrade || "-"}</b></span>
+      </div>
+      <div class="trade-actions">
+        ${type === "waiting"
+          ? `<button class="secondary cancel-intuition" data-id="${trade.id}" type="button">Cancel</button>`
+          : `<button class="secondary close-intuition" data-id="${trade.id}" type="button">Close</button><button class="secondary flip-intuition" data-id="${trade.id}" type="button">Flip</button>`}
+      </div>
+    </article>
+  `;
+}
+
+function renderIntuition() {
+  const state = intuitionState();
+  renderIntuitionGainers();
+  renderIntuitionSummary(state);
+  if (ui.intuitionStatus) ui.intuitionStatus.textContent = `${state.waiting.length} čaká | ${state.active.length} aktívne | ${state.closed.length} closed`;
+  if (ui.intuitionTradesMeta) ui.intuitionTradesMeta.textContent = `${state.waiting.length + state.active.length} open`;
+  if (ui.intuitionWaitingList) ui.intuitionWaitingList.innerHTML = state.waiting.map((trade) => intuitionTradeCard(trade, "waiting")).join("") || `<p class="muted">Žiadne čakajúce triggery.</p>`;
+  if (ui.intuitionActiveList) ui.intuitionActiveList.innerHTML = state.active.map((trade) => intuitionTradeCard(trade, "active")).join("") || `<p class="muted">Žiadne aktívne intuície.</p>`;
+  document.querySelectorAll(".intuition-card[data-pair]").forEach((card) => {
+    card.addEventListener("click", (event) => {
+      if (event.target.closest("button")) return;
+      syncChart(card.dataset.pair, "intuition");
+    });
+  });
+  document.querySelectorAll(".cancel-intuition").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    cancelIntuitionWaiting(button.dataset.id);
+  }));
+  document.querySelectorAll(".close-intuition").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    closeIntuitionTrade(button.dataset.id);
+  }));
+  document.querySelectorAll(".flip-intuition").forEach((button) => button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    flipIntuitionTrade(button.dataset.id);
+  }));
+}
+
+function renderIntuitionJournal() {
+  const state = intuitionState();
+  const rows = state.closed;
+  const stats = intuitionStats(rows);
+  if (ui.intuitionJournalMeta) ui.intuitionJournalMeta.textContent = `${rows.length} closed`;
+  if (ui.intuitionJournalSummary) ui.intuitionJournalSummary.innerHTML = `
+    <article><span>WR</span><strong>${fmt(stats.winrate, 0)}%</strong></article>
+    <article><span>Wins / Losses</span><strong>${stats.wins} / ${stats.losses}</strong></article>
+    <article><span>Avg</span><strong class="${stats.avg >= 0 ? "positive" : "negative"}">${pct(stats.avg)}</strong></article>
+    <article><span>Total</span><strong class="${stats.total >= 0 ? "positive" : "negative"}">${pct(stats.total)}</strong></article>
+    <article><span>Avg MFE</span><strong class="positive">${pct(stats.avgMfe)}</strong></article>
+    <article><span>Avg MAE</span><strong class="negative">${pct(stats.avgMae)}</strong></article>
+  `;
+  if (ui.intuitionSideBars) ui.intuitionSideBars.innerHTML = analysisBarHtml(groupRows(rows.map((row) => ({ ...row, tpHit: row.closeReason || "manual", status: row.closeReason || "closed" })), "side"));
+  if (ui.intuitionExcursionSummary) ui.intuitionExcursionSummary.innerHTML = excursionSummaryHtml(rows);
+  const byDay = Object.entries(groupRows(rows.map((row) => ({ ...row, date: isoDay(row.closedAt || row.openedAt || row.createdAt) })), "date")).sort((a, b) => b[0].localeCompare(a[0]));
+  if (ui.intuitionDaysMeta) ui.intuitionDaysMeta.textContent = `${byDay.length} dní`;
+  if (ui.intuitionDays) ui.intuitionDays.innerHTML = byDay.map(([date, dayRows], index) => {
+    const stat = intuitionStats(dayRows);
+    return `
+      <details class="analysis-day" ${index === 0 ? "open" : ""}>
+        <summary><strong>${date}</strong><span>${stat.count} closed | WR ${fmt(stat.winrate, 0)}% | avg ${pct(stat.avg)}</span></summary>
+        <div class="analysis-trades">${dayRows.map((row) => `
+          <article class="analysis-trade intuition-analysis-trade">
+            <div><strong>${row.pair}</strong><span>${row.side} | ${row.triggerType}</span></div>
+            <span class="rating-chip">${row.market?.rank || "-"}</span>
+            <span>Intuition</span>
+            <span>Entry <b>${fmt(row.entry)}</b></span>
+            <span>Exit <b>${fmt(row.exit)}</b></span>
+            <span>Result <b class="${row.resultPct >= 0 ? "positive" : "negative"}">${pct(row.resultPct)}</b></span>
+            <span>MFE/MAE <b><em class="positive">${pct(row.mfe)}</em> / <em class="negative">${pct(row.mae)}</em></b></span>
+            <span>Path <b>${pathMetaLabel(row)}</b></span>
+            <span>Eff <b>${pct(row.pathMeta?.excursionEfficiency, 0)}</b></span>
+            <span>MFE/MAE R <b>${ratioLabel(row.pathMeta?.mfeMaeRatio)}</b></span>
+            <span>MAE pred +3 <b class="negative">${pct(row.pathMeta?.maeBeforePlus3)}</b></span>
+            <span>Time <b>${row.timeInTrade || "-"}</b></span>
+          </article>
+        `).join("")}</div>
+      </details>
+    `;
+  }).join("") || `<p class="muted">Zatiaľ žiadne uzavreté intuition trady.</p>`;
+}
+
 function renderJournal() {
   const rows = journal();
   const closedRows = rows.filter((row) => row.status !== "running");
@@ -5885,6 +6324,8 @@ function renderJournal() {
 function setView(view) {
   ui.navButtons.forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   ui.panels.forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === view));
+  if (view === "intuition") renderIntuition();
+  if (view === "intuitionJournal") renderIntuitionJournal();
 }
 
 ui.navButtons.forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
@@ -5948,7 +6389,10 @@ migrateTpSlJournalResults();
 migrateSlFillOvershoots();
 migrateRemoveOversizedRiskTrade();
 setInterval(updatePaper, 8000);
+setInterval(updateIntuition, 8000);
 setInterval(scanLive, AUTO_SCAN_MS);
 renderPaper();
+renderIntuition();
+renderIntuitionJournal();
 renderJournal();
 scanLive();
