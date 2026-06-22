@@ -11,17 +11,26 @@
       <header class="topbar">
         <div>
           <h1>Fade Lab</h1>
-          <p>Rucny scanner pre post-peak top losers a paper sledovanie MFE vs MAE.</p>
+          <p id="appSubtitle">Short continuation scanner a paper sledovanie MFE vs MAE.</p>
         </div>
-        <button id="scanButton" class="primary">Scan top losers</button>
+        <button id="scanButton" class="primary short-primary">Scan short setupy</button>
       </header>
 
       <nav class="tabs" aria-label="Fade Lab views">
-        <button class="tab active" data-tab="scanner">Scanner</button>
+        <button class="tab active" data-tab="short">Short Lab</button>
+        <button class="tab" data-tab="long">Long Bounce</button>
         <button class="tab" data-tab="journal">Journal</button>
       </nav>
 
       <section id="scannerView" class="view active">
+        <section class="strategy-head">
+          <div>
+            <span id="strategyEyebrow" class="strategy-eyebrow short-text">SHORT CONTINUATION</span>
+            <h2 id="strategyTitle">Fade po pumpe a potvrdenom rejection</h2>
+            <p id="strategyDescription">Top losers sú iba discovery vrstva. Vstup čaká na retest a odmietnutie rezistencie.</p>
+          </div>
+          <div id="strategyBadge" class="strategy-badge short-badge">SHORT</div>
+        </section>
         <section class="toolbar">
           <label>
             Universe
@@ -34,30 +43,37 @@
             <input id="limitInput" type="number" min="5" max="30" step="1" value="10">
           </label>
           <label>
-            Min. pump
+            <span id="primaryFilterLabel">Min. pump</span>
             <input id="minPumpInput" type="number" min="0" max="300" step="5" value="12">
           </label>
           <label>
-            Min. dump od high
+            <span id="secondaryFilterLabel">Min. dump od high</span>
             <input id="minFadeInput" type="number" min="0" max="80" step="1" value="3">
           </label>
         </section>
 
-        <section class="grid">
-          <div class="panel">
+        <section class="trade-board">
+          <div class="panel board-panel candidates-panel">
             <div class="panel-head">
-              <h2>Kandidati</h2>
+              <div><span class="panel-kicker">DISCOVERY</span><h2 id="candidateTitle">Short kandidáti</h2></div>
               <span id="scanStatus" class="muted">Neskenovane</span>
             </div>
             <div id="candidates" class="list empty">Spusti scan.</div>
           </div>
 
-          <div class="panel">
+          <div class="panel board-panel waiting-panel">
             <div class="panel-head">
-              <h2>Paper fade trades</h2>
+              <div><span class="panel-kicker">ARMED</span><h2 id="waitingTitle">Čakajúce shorty</h2></div>
+            </div>
+            <div id="waitingTrades" class="list empty">Žiadne čakajúce setupy.</div>
+          </div>
+
+          <div class="panel board-panel open-panel">
+            <div class="panel-head">
+              <div><span class="panel-kicker">LIVE PAPER</span><h2 id="openTitle">Otvorené shorty</h2></div>
               <button id="clearTradesButton" class="ghost">Vymazat</button>
             </div>
-            <div id="trades" class="list empty">Ziadne aktivne sledovanie.</div>
+            <div id="openTrades" class="list empty">Žiadne otvorené obchody.</div>
           </div>
         </section>
 
