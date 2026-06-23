@@ -19,6 +19,7 @@
       <nav class="tabs" aria-label="Fade Lab views">
         <button class="tab active" data-tab="short">Short Lab</button>
         <button class="tab" data-tab="long">Long Bounce</button>
+        <button class="tab" data-tab="pump">Pump Radar</button>
         <button class="tab" data-tab="journal">Journal</button>
       </nav>
 
@@ -97,11 +98,43 @@
         </section>
       </section>
 
+      <section id="pumpRadarView" class="view">
+        <section class="strategy-head pump-head">
+          <div>
+            <span class="strategy-eyebrow pump-text">PUMP RECURRENCE</span>
+            <h2>Pump Radar</h2>
+            <p>Hľadá coiny, ktoré už spravili kvalitnú pumpu, vychladli a môžu sa cyklicky objaviť znova.</p>
+          </div>
+          <button id="pumpScanButton" class="primary pump-primary">Scan pump radar</button>
+        </section>
+
+        <section class="pump-grid">
+          <div class="panel">
+            <div class="panel-head">
+              <div><span class="panel-kicker">RADAR</span><h2>Kandidáti</h2></div>
+              <span id="pumpScanStatus" class="muted">Neskenované</span>
+            </div>
+            <div id="pumpCandidates" class="list empty">Spusti scan.</div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div><span class="panel-kicker">EXPERIMENT</span><h2>Vyhodnotenie</h2></div>
+              <button id="exportPumpRadarButton" class="ghost">Export CSV</button>
+            </div>
+            <div id="pumpStats" class="analysis-grid journal-summary"></div>
+            <div id="pumpTracked" class="list empty">Zatiaľ nič nesledujeme.</div>
+          </div>
+        </section>
+      </section>
+
       <section id="journalView" class="view">
         <section class="panel journal-panel">
         <div class="panel-head">
           <h2>Journal</h2>
           <div class="panel-actions">
+            <input id="importJournalInput" type="file" accept=".csv,text/csv" hidden>
+            <button id="importJournalButton" class="ghost">Import CSV</button>
             <button id="exportJournalButton" class="ghost">Export CSV</button>
             <button id="clearJournalButton" class="ghost">Vymazat journal</button>
           </div>

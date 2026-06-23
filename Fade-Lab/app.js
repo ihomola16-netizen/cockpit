@@ -1,9 +1,12 @@
 const API = "https://fapi.binance.com";
 const STORAGE_KEY = "fade-lab-trades-v1";
 const JOURNAL_KEY = "fade-lab-journal-v1";
+const PUMP_RADAR_KEY = "fade-lab-pump-radar-v1";
+const JOURNAL_SEED_FILE = "fade-lab-journal-2026-06-23.csv";
+const JOURNAL_SEED_KEY = "fade-lab-journal-seed-2026-06-23";
 const TRIGGER_REJECTION_PCT = 0.35;
 const TRIGGER_INVALIDATION_PCT = 1.25;
-const TRIGGER_EXPIRES_MS = 60 * 60 * 1000;
+const TRIGGER_EXPIRES_MS = 2 * 60 * 60 * 1000;
 const AUTO_CLOSE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 const els = {
@@ -11,6 +14,15 @@ const els = {
   clearTradesButton: document.querySelector("#clearTradesButton"),
   clearJournalButton: document.querySelector("#clearJournalButton"),
   exportJournalButton: document.querySelector("#exportJournalButton"),
+  importJournalButton: document.querySelector("#importJournalButton"),
+  importJournalInput: document.querySelector("#importJournalInput"),
+  pumpRadarView: document.querySelector("#pumpRadarView"),
+  pumpScanButton: document.querySelector("#pumpScanButton"),
+  pumpScanStatus: document.querySelector("#pumpScanStatus"),
+  pumpCandidates: document.querySelector("#pumpCandidates"),
+  pumpTracked: document.querySelector("#pumpTracked"),
+  pumpStats: document.querySelector("#pumpStats"),
+  exportPumpRadarButton: document.querySelector("#exportPumpRadarButton"),
   scanStatus: document.querySelector("#scanStatus"),
   candidates: document.querySelector("#candidates"),
   waitingTrades: document.querySelector("#waitingTrades"),
@@ -44,6 +56,7 @@ const els = {
 
 let trades = loadTrades();
 let journal = loadJournal();
+let pumpRadar = loadPumpRadar();
 let priceCache = new Map();
 let priceSocket = null;
 let socketSymbolsKey = "";
@@ -62,6 +75,7 @@ let journalExcursionBackfillInFlight = false;
 let autoCloseInFlight = false;
 let scannerSide = "SHORT";
 let lastCandidates = { SHORT: [], LONG: [] };
+let lastPumpCandidates = [];
 
 function fmt(value, digits = 5) {
   const number = Number(value);
@@ -142,6 +156,12 @@ function normalizeTrade(trade) {
   const base = tradeBasePrice(trade);
   if (!Number.isFinite(base) || base <= 0) return trade;
   trade.side ||= "SHORT";
+  if (trade.status === "WAITING" && Number(trade.createdAt) > 0) {
+    const twoHourExpiry = Number(trade.createdAt) + TRIGGER_EXPIRES_MS;
+    if (!Number(trade.triggerExpiresAt) || Number(trade.triggerExpiresAt) < twoHourExpiry) {
+      trade.triggerExpiresAt = twoHourExpiry;
+    }
+  }
   if (trade.side === "LONG") {
     if (!Number.isFinite(Number(trade.tp2)) || Number(trade.tp2) <= base) {
       trade.tp2 = longTargetAbove(base, [base * 1.04]);
@@ -222,12 +242,176 @@ function loadJournal() {
   }
 }
 
+function loadPumpRadar() {
+  try {
+    return JSON.parse(localStorage.getItem(PUMP_RADAR_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
 function saveTrades() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(trades));
 }
 
 function saveJournal() {
   localStorage.setItem(JOURNAL_KEY, JSON.stringify(journal));
+}
+
+function savePumpRadar() {
+  localStorage.setItem(PUMP_RADAR_KEY, JSON.stringify(pumpRadar));
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
+    if (char === '"') {
+      if (quoted && next === '"') {
+        cell += '"';
+        i += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === "," && !quoted) {
+      row.push(cell);
+      cell = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && next === "\n") i += 1;
+      row.push(cell);
+      if (row.some((value) => value !== "")) rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+  row.push(cell);
+  if (row.some((value) => value !== "")) rows.push(row);
+  if (rows.length < 2) return [];
+  const headers = rows[0].map((value) => value.trim());
+  return rows.slice(1).map((values) => Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""])));
+}
+
+function csvNumber(value, fallback = null) {
+  if (value === "" || value === null || value === undefined) return fallback;
+  const number = Number(String(value).replace(",", "."));
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function csvBool(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (["true", "1", "yes", "ano"].includes(normalized)) return true;
+  if (["false", "0", "no", "nie"].includes(normalized)) return false;
+  return false;
+}
+
+function csvDate(value) {
+  if (!value) return null;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? new Date(time).toISOString() : null;
+}
+
+function journalTradeKey(item) {
+  const symbol = String(item.symbol || "").toUpperCase();
+  const side = String(item.side || "SHORT").toUpperCase();
+  const entry = csvNumber(item.entry ?? item.triggerPrice, 0);
+  const closedAt = Date.parse(item.closedAt || "");
+  if (symbol && Number.isFinite(closedAt) && entry > 0) {
+    return `${symbol}|${side}|${entry.toPrecision(12)}|${closedAt}`;
+  }
+  return item.id || `${symbol}|${side}|${item.closedAt || ""}|${item.closePrice || ""}`;
+}
+
+function journalItemFromCsv(row) {
+  const side = String(row.side || "SHORT").toUpperCase() === "LONG" ? "LONG" : "SHORT";
+  const entry = csvNumber(row.entry, 0);
+  const closedAt = csvDate(row.closedAt) || new Date().toISOString();
+  const durationMs = csvNumber(row.durationMs, 0);
+  const item = {
+    id: `import-${journalTradeKey({ symbol: row.symbol, side, entry, closedAt })}`,
+    symbol: String(row.symbol || "").trim().toUpperCase(),
+    side,
+    mode: row.mode || "import",
+    setupScore: csvNumber(row.score),
+    setupScoreGrade: row.scoreGrade || "",
+    setupOverextended: csvBool(row.overextended),
+    setupRewardRisk: csvNumber(row.rewardRisk),
+    setupDistanceBelowRetestAtr: csvNumber(row.distanceBelowRetestAtr),
+    setupVolumeRatio: csvNumber(row.volumeRatio),
+    resultTag: row.result || "",
+    closeReason: row.closeReason || "IMPORT",
+    firstMove: row.firstMove || "",
+    entry,
+    triggerPrice: entry,
+    closePrice: csvNumber(row.closePrice),
+    pnl: csvNumber(row.pnlPct, 0),
+    mfe: csvNumber(row.mfePct, 0),
+    mae: Math.abs(csvNumber(row.maePct, 0)),
+    mfeBeforeMae1Pct: csvNumber(row.mfeBeforeMae1Pct),
+    mfeBeforeMae2Pct: csvNumber(row.mfeBeforeMae2Pct),
+    mfeBeforeMae3Pct: csvNumber(row.mfeBeforeMae3Pct),
+    mae1HitAt: csvDate(row.mae1HitAt),
+    mae2HitAt: csvDate(row.mae2HitAt),
+    mae3HitAt: csvDate(row.mae3HitAt),
+    preMae1Ambiguous: csvBool(row.preMae1Ambiguous),
+    preMae2Ambiguous: csvBool(row.preMae2Ambiguous),
+    preMae3Ambiguous: csvBool(row.preMae3Ambiguous),
+    bestPrice: csvNumber(row.bestPrice),
+    worstPrice: csvNumber(row.worstPrice),
+    mfeHitAt: csvDate(row.mfeHitAt),
+    maeHitAt: csvDate(row.maeHitAt),
+    setupPumpPct: csvNumber(row.pumpPct),
+    setupFadeFromPeak: csvNumber(row.fadeFromPeakPct),
+    setupChange24: csvNumber(row.change24Pct),
+    durationMs,
+    backfillNote: row.backfillNote || "Import z CSV journalu.",
+    openedAt: durationMs > 0 ? Date.parse(closedAt) - durationMs : undefined,
+    closedAt,
+    status: "CLOSED",
+  };
+  return normalizeTrade(inferTradeSide(item));
+}
+
+function mergeJournalItems(imported) {
+  const existing = new Set(journal.map(journalTradeKey));
+  const fresh = [];
+  for (const item of imported) {
+    if (!item.symbol) continue;
+    const key = journalTradeKey(item);
+    if (existing.has(key)) continue;
+    existing.add(key);
+    fresh.push(item);
+  }
+  if (fresh.length) {
+    journal = [...fresh, ...journal];
+    saveJournal();
+    renderJournal();
+  }
+  return fresh.length;
+}
+
+function importJournalCsvText(text) {
+  const rows = parseCsv(text);
+  const imported = rows.map(journalItemFromCsv);
+  return { added: mergeJournalItems(imported), total: imported.length };
+}
+
+async function importBundledJournalSeed() {
+  if (localStorage.getItem(JOURNAL_SEED_KEY)) return;
+  try {
+    const response = await fetch(JOURNAL_SEED_FILE, { cache: "no-store" });
+    if (!response.ok) return;
+    const text = await response.text();
+    importJournalCsvText(text);
+    localStorage.setItem(JOURNAL_SEED_KEY, new Date().toISOString());
+  } catch {
+    // Seed je iba pohodlný bootstrap; ručný import ostáva hlavná cesta.
+  }
 }
 
 function klineToCandle(kline) {
@@ -370,6 +554,7 @@ function renderChart(candles) {
   };
 
   if (chartLevels) {
+    addLine(chartLevels.htfLevel, chartLevels.side === "LONG" ? "1h support" : "1h resistance", "#8ab4f8");
     addLine(chartLevels.retest, chartLevels.side === "LONG" ? "long breakout" : "short trigger", "#f5c451");
     addLine(chartLevels.stop, "stop", "#ff647c");
     addLine(chartLevels.tp2, "TP fade", "#37d399");
@@ -479,6 +664,92 @@ function bestResistanceAbove(candles, last, atr) {
     distanceAtr: atr > 0 ? (price - last) / atr : 1,
     score: 0,
   };
+}
+
+function bestSupportBelow(candles, last, atr) {
+  const recent = candles.slice(-64);
+  const tolerance = Math.max((atr || 0) * 0.4, last * 0.0025);
+  const pivots = [];
+
+  for (let index = 1; index < recent.length - 1; index += 1) {
+    const candle = recent[index];
+    if (candle.low >= last) continue;
+    if (candle.low <= recent[index - 1].low && candle.low <= recent[index + 1].low) {
+      pivots.push({ price: candle.low, recency: index / recent.length });
+    }
+  }
+
+  const zones = [];
+  for (const pivot of pivots) {
+    let zone = zones.find((item) => Math.abs(item.price - pivot.price) <= tolerance);
+    if (!zone) {
+      zone = { price: pivot.price, touches: 0, recency: 0 };
+      zones.push(zone);
+    }
+    zone.price = ((zone.price * zone.touches) + pivot.price) / (zone.touches + 1);
+    zone.touches += 1;
+    zone.recency = Math.max(zone.recency, pivot.recency);
+  }
+
+  const ranked = zones
+    .map((zone) => {
+      const distanceAtr = atr > 0 ? (last - zone.price) / atr : ((last - zone.price) / last) * 100;
+      const nearestPenalty = distanceAtr;
+      return {
+        ...zone,
+        distanceAtr,
+        score: zone.touches * 5 + zone.recency * 3 - nearestPenalty,
+      };
+    })
+    .filter((zone) => zone.distanceAtr >= 0.15 && zone.distanceAtr <= 6)
+    .sort((a, b) => b.score - a.score);
+
+  if (ranked.length) return ranked[0];
+
+  const fallbackDistance = Math.max(atr || 0, last * 0.01);
+  const recentLows = recent.map((candle) => candle.low).filter((price) => price < last - fallbackDistance * 0.25);
+  const nearestLow = recentLows.sort((a, b) => b - a)[0];
+  const price = nearestLow || last - fallbackDistance;
+  return {
+    price,
+    touches: nearestLow ? 1 : 0,
+    recency: 0,
+    distanceAtr: atr > 0 ? (last - price) / atr : 1,
+    score: 0,
+  };
+}
+
+function applyHourlyLevel(candidate, candles1h) {
+  if (!candles1h?.length) return candidate;
+  const atr1h = averageTrueRange(candles1h);
+  if (candidate.side === "LONG") {
+    const support = bestSupportBelow(candles1h, candidate.last, atr1h);
+    candidate.htfLevelType = "support";
+    candidate.htfLevel = support.price;
+    candidate.htfTouches = support.touches;
+    candidate.htfDistanceAtr = support.distanceAtr;
+    return candidate;
+  }
+
+  const resistance = bestResistanceAbove(candles1h, candidate.last, atr1h);
+  candidate.htfLevelType = "resistance";
+  candidate.htfLevel = resistance.price;
+  candidate.htfTouches = resistance.touches;
+  candidate.htfDistanceAtr = resistance.distanceAtr;
+  if (resistance.price > candidate.last) {
+    candidate.retest = resistance.price;
+    candidate.retestSource = "1h resistance";
+    candidate.resistanceTouches = resistance.touches;
+    candidate.resistanceDistanceAtr = resistance.distanceAtr;
+    candidate.stop = Math.max(resistance.price * 1.035, candidate.last * 1.025);
+    candidate.tp2 = shortTargetBelow(resistance.price, [candidate.originPrice, candidate.low24, candidate.last * 0.96, resistance.price * 0.96]);
+    candidate.tp1 = shortTargetBelow(resistance.price, [candidate.last * 0.985, resistance.price * 0.98, candidate.tp2 * 1.02]);
+    const expectedEntry = triggerConfirmationPrice(resistance.price);
+    const reward = Math.max(0, expectedEntry - candidate.tp2);
+    const risk = Math.max(0, candidate.stop - expectedEntry);
+    candidate.rewardRisk = risk > 0 ? reward / risk : 0;
+  }
+  return candidate;
 }
 
 function analyzeSymbol(ticker, candles) {
@@ -702,9 +973,14 @@ async function scan() {
       const batch = universe.slice(index, index + batchSize);
       els.scanStatus.textContent = `Analyzujem ${Math.min(index + batch.length, universe.length)}/${universe.length}...`;
       const results = await Promise.allSettled(batch.map(async (ticker) => {
-        const raw = await getJson(`/fapi/v1/klines?symbol=${ticker.symbol}&interval=15m&limit=96`);
-        const candles = raw.map(klineToCandle);
-        return scanSide === "LONG" ? analyzeLongSymbol(ticker, candles) : analyzeSymbol(ticker, candles);
+        const [raw15m, raw1h] = await Promise.all([
+          getJson(`/fapi/v1/klines?symbol=${ticker.symbol}&interval=15m&limit=96`),
+          getJson(`/fapi/v1/klines?symbol=${ticker.symbol}&interval=1h&limit=120`),
+        ]);
+        const candles = raw15m.map(klineToCandle);
+        const candles1h = raw1h.map(klineToCandle);
+        const candidate = scanSide === "LONG" ? analyzeLongSymbol(ticker, candles) : analyzeSymbol(ticker, candles);
+        return applyHourlyLevel(candidate, candles1h);
       }));
 
       for (const result of results) {
@@ -749,6 +1025,81 @@ function activeTradeSymbols() {
   );
 }
 
+function pumpMovePct(candle) {
+  return candle.open > 0 ? ((candle.high - candle.open) / candle.open) * 100 : 0;
+}
+
+function analyzePumpRadarSymbol(ticker, candles4h, candles1h) {
+  const last = Number(ticker.lastPrice);
+  const change24 = Number(ticker.priceChangePercent);
+  const quoteVolume24 = Number(ticker.quoteVolume) || 0;
+  const now = Date.now();
+  const events = [];
+  for (let index = 8; index < candles4h.length; index += 1) {
+    const candle = candles4h[index];
+    const move = pumpMovePct(candle);
+    const baseVol = avgFor(candles4h.slice(Math.max(0, index - 8), index), (item) => item.quoteVolume || 0) || 0;
+    const volumeExpansion = baseVol > 0 ? (candle.quoteVolume || 0) / baseVol : 1;
+    if (move >= 15 && volumeExpansion >= 1.8) {
+      events.push({
+        time: candle.time,
+        move,
+        volumeExpansion,
+        closeAfterPump: candle.close,
+      });
+    }
+  }
+
+  const lastEvent = events.at(-1);
+  const daysSincePump = lastEvent ? (now - lastEvent.time) / 86_400_000 : 999;
+  const strongestPump = events.length ? Math.max(...events.map((event) => event.move)) : 0;
+  const avgPumpQuality = events.length ? avgFor(events, (event) => event.move * Math.min(3, event.volumeExpansion)) : 0;
+  const recent1h = candles1h.slice(-24);
+  const older1h = candles1h.slice(-96, -24);
+  const recentRangePct = avgFor(recent1h, (candle) => candle.open > 0 ? ((candle.high - candle.low) / candle.open) * 100 : 0) || 0;
+  const olderRangePct = avgFor(older1h, (candle) => candle.open > 0 ? ((candle.high - candle.low) / candle.open) * 100 : 0) || recentRangePct || 1;
+  const compression = olderRangePct > 0 ? Math.max(0, 1 - recentRangePct / olderRangePct) : 0;
+  const recentVol = avgFor(candles1h.slice(-6), (candle) => candle.quoteVolume || 0) || 0;
+  const baseVol = avgFor(candles1h.slice(-48, -6), (candle) => candle.quoteVolume || 0) || 0;
+  const volumeCreep = baseVol > 0 ? recentVol / baseVol : 1;
+  const lastHigh24 = Math.max(...recent1h.map((candle) => candle.high));
+  const breakoutDistancePct = last > 0 ? ((lastHigh24 - last) / last) * 100 : 0;
+  const tooHotNow = change24 > 18;
+  const quietAfterPump = Math.abs(change24) <= 12 && daysSincePump >= 1 && daysSincePump <= 10;
+
+  let score = 0;
+  score += Math.min(30, events.length * 10);
+  score += strongestPump >= 35 ? 18 : strongestPump >= 25 ? 12 : strongestPump >= 18 ? 7 : 0;
+  score += avgPumpQuality >= 80 ? 14 : avgPumpQuality >= 50 ? 10 : avgPumpQuality >= 30 ? 5 : 0;
+  score += daysSincePump >= 2 && daysSincePump <= 7 ? 16 : daysSincePump > 0.5 && daysSincePump <= 10 ? 8 : -8;
+  score += compression >= 0.35 ? 12 : compression >= 0.18 ? 7 : 0;
+  score += volumeCreep >= 1.7 ? 12 : volumeCreep >= 1.25 ? 7 : volumeCreep < 0.75 ? -4 : 0;
+  score += quoteVolume24 >= 80_000_000 ? 10 : quoteVolume24 >= 20_000_000 ? 6 : quoteVolume24 >= 5_000_000 ? 2 : -5;
+  score += quietAfterPump ? 8 : 0;
+  score += tooHotNow ? -20 : 0;
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  return {
+    symbol: ticker.symbol,
+    last,
+    change24,
+    quoteVolume24,
+    score,
+    grade: score >= 78 ? "A" : score >= 62 ? "B" : "C",
+    pumpCount14d: events.length,
+    strongestPump,
+    daysSincePump,
+    compressionPct: compression * 100,
+    volumeCreep,
+    breakoutDistancePct,
+    lastPumpAt: lastEvent?.time || null,
+    lastPumpMove: lastEvent?.move || 0,
+    lastPumpVolumeExpansion: lastEvent?.volumeExpansion || 1,
+    tooHotNow,
+    quietAfterPump,
+  };
+}
+
 function coloredPct(value) {
   const number = Number(value);
   return `<span class="${number > 0 ? "good" : number < 0 ? "bad" : ""}">${pct(number)}</span>`;
@@ -771,18 +1122,69 @@ function candidateCardHtml(item) {
     ${metric("Volume", `${item.volumeRatio.toFixed(2)}×`)}${metric("Range pozícia", `${item.rangePosition.toFixed(0)}%`)}
   `;
   const triggerLabel = isLong ? "Breakout long" : item.retestSource === "best resistance" ? "Resistance entry" : "Retest entry";
-  const marketLabel = item.marketAllowed ? `Market ${isLong ? "long" : "short"}` : `Market watch: ${item.marketBlockReason}`;
+  const htfLabel = isLong ? "1h support trigger" : "1h resistance trigger";
+  const htfValue = Number.isFinite(Number(item.htfLevel))
+    ? `${fmt(item.htfLevel)}${item.htfTouches ? ` · ${item.htfTouches}x` : ""}`
+    : "-";
+  const htfTriggerPrice = Number(item.htfLevel);
+  const hasHtfTrigger = Number.isFinite(htfTriggerPrice) && htfTriggerPrice > 0;
+  const htfButtonLabel = hasHtfTrigger
+    ? `${isLong ? "1h support long" : "1h resistance short"} @ ${fmt(htfTriggerPrice)}`
+    : "1h trigger nie je";
   return `
     <article class="card side-${isLong ? "long" : "short"}" data-symbol-card="${item.symbol}">
       <div class="row-top"><div><div class="symbol">${item.symbol}</div><div class="muted">${structure}</div></div><div class="score">${item.scoreGrade} · ${item.score}/100</div></div>
       <div class="metrics">${metrics}</div>
-      <div class="levels">${metric(triggerLabel, fmt(item.retest))}${metric("Stop", fmt(item.stop))}${metric(isLong ? "TP bounce" : "TP fade", fmt(item.tp2))}</div>
+      <div class="levels">${metric(htfLabel, htfValue)}${metric(triggerLabel, fmt(item.retest))}${metric("Stop", fmt(item.stop))}${metric(isLong ? "TP bounce" : "TP fade", fmt(item.tp2))}</div>
       <div class="actions">
-        <button data-action="market" data-symbol="${item.symbol}" ${item.marketAllowed ? "" : "disabled"}>${marketLabel}</button>
+        <button data-action="htf-trigger" data-symbol="${item.symbol}" data-trigger="${htfTriggerPrice}" ${hasHtfTrigger ? "" : "disabled"}>${htfButtonLabel}</button>
         <button data-action="trigger" data-symbol="${item.symbol}" data-trigger="${item.retest}">${isLong ? `Breakout long @ ${fmt(item.retest)}` : "Retest → rejection short"}</button>
       </div>
       <div class="note">${isLong ? "Long čaká na breakout nad micro resistance; stop ostáva pod sweep low." : "Short čaká na retest a návrat pod rejection confirm."}</div>
     </article>`;
+}
+
+function pumpCandidateCardHtml(item) {
+  const tracked = pumpRadar.some((watch) => watch.symbol === item.symbol && watch.status === "ACTIVE");
+  return `
+    <article class="card pump-card" data-pump-symbol="${item.symbol}">
+      <div class="row-top">
+        <div><div class="symbol">${item.symbol}</div><div class="muted">${item.pumpCount14d} kvalitné pumpy / posledná pred ${item.daysSincePump > 100 ? "-" : item.daysSincePump.toFixed(1)} dňami</div></div>
+        <div class="score">${item.grade} · ${item.score}/100</div>
+      </div>
+      <div class="metrics">
+        ${metric("Last", fmt(item.last))}${metric("24h", coloredPct(item.change24))}
+        ${metric("Max pump 14d", coloredPct(item.strongestPump))}${metric("Volume creep", `${item.volumeCreep.toFixed(2)}×`)}
+        ${metric("Kompresia", `${item.compressionPct.toFixed(0)}%`)}${metric("Vol 24h", `${(item.quoteVolume24 / 1_000_000).toFixed(1)}M`)}
+      </div>
+      <div class="note">${item.tooHotNow ? "Už je horúci — skôr sledovať po resete." : item.quietAfterPump ? "Zaujímavý reset po pumpe: vychladol, ale nie je mŕtvy." : "Radar kandidát na cyklické sledovanie."}</div>
+      <div class="actions">
+        <button data-pump-watch="${item.symbol}" ${tracked ? "disabled" : ""}>${tracked ? "Už sledujem" : "Sledovať 72h"}</button>
+      </div>
+    </article>`;
+}
+
+function renderPumpCandidates(items = lastPumpCandidates) {
+  if (!els.pumpCandidates) return;
+  if (!items.length) {
+    els.pumpCandidates.className = "list empty";
+    els.pumpCandidates.textContent = "Spusti scan.";
+    return;
+  }
+  els.pumpCandidates.className = "list";
+  els.pumpCandidates.innerHTML = items.map(pumpCandidateCardHtml).join("");
+  els.pumpCandidates.querySelectorAll("[data-pump-symbol]").forEach((card) => {
+    card.addEventListener("click", (event) => {
+      if (event.target.closest("button")) return;
+      selectSymbol(card.dataset.pumpSymbol);
+    });
+  });
+  els.pumpCandidates.querySelectorAll("[data-pump-watch]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = items.find((candidate) => candidate.symbol === button.dataset.pumpWatch);
+      if (item) addPumpWatch(item);
+    });
+  });
 }
 
 function renderCandidates(items) {
@@ -801,23 +1203,264 @@ function renderCandidates(items) {
     card.addEventListener("click", (event) => {
       if (event.target.closest("button")) return;
       const item = items.find((candidate) => candidate.symbol === card.dataset.symbolCard);
-      selectSymbol(card.dataset.symbolCard, item ? { side: item.side, retest: item.retest, stop: item.stop, tp2: item.tp2 } : null);
+      selectSymbol(card.dataset.symbolCard, item ? { side: item.side, retest: item.retest, htfLevel: item.htfLevel, stop: item.stop, tp2: item.tp2 } : null);
     });
   });
 
   els.candidates.querySelectorAll("button[data-action]").forEach((button) => {
     button.addEventListener("click", () => {
       const item = items.find((candidate) => candidate.symbol === button.dataset.symbol);
-      selectSymbol(item.symbol, { side: item.side, retest: item.retest, stop: item.stop, tp2: item.tp2 });
-      addTrade(item, button.dataset.action, Number(button.dataset.trigger || item.last));
+      selectSymbol(item.symbol, { side: item.side, retest: item.retest, htfLevel: item.htfLevel, stop: item.stop, tp2: item.tp2 });
+      const action = button.dataset.action;
+      const triggerPrice = Number(button.dataset.trigger || item.last);
+      addTrade(item, action === "htf-trigger" ? "trigger" : action, triggerPrice, action === "htf-trigger" ? "HTF" : "STANDARD");
       renderCandidates(items);
     });
   });
 
   if (!selectedSymbol && items[0]) {
-    selectSymbol(items[0].symbol, { retest: items[0].retest, stop: items[0].stop, tp2: items[0].tp2 });
+    selectSymbol(items[0].symbol, { side: items[0].side, retest: items[0].retest, htfLevel: items[0].htfLevel, stop: items[0].stop, tp2: items[0].tp2 });
   } else {
     markSelectedCards();
+  }
+}
+
+async function evaluatePumpWatch(item) {
+  const ageMs = Date.now() - Number(item.createdAt);
+  const limit = Math.min(1000, Math.max(24, Math.ceil(ageMs / 3_600_000) + 6));
+  const raw = await getJson(`/fapi/v1/klines?symbol=${item.symbol}&interval=1h&limit=${limit}`);
+  const candles = raw.map(klineToCandle).filter((candle) => candle.time >= Number(item.createdAt));
+  if (!candles.length || !(Number(item.baselinePrice) > 0)) return item;
+
+  const baseline = Number(item.baselinePrice);
+  const calcWindow = (hours) => {
+    const until = Number(item.createdAt) + hours * 3_600_000;
+    const sample = candles.filter((candle) => candle.time <= until);
+    if (!sample.length) return { mfe: 0, mae: 0, hit15: false };
+    const bestHigh = Math.max(...sample.map((candle) => candle.high));
+    const worstLow = Math.min(...sample.map((candle) => candle.low));
+    const mfe = ((bestHigh - baseline) / baseline) * 100;
+    const mae = ((baseline - worstLow) / baseline) * 100;
+    return { mfe: Math.max(0, mfe), mae: Math.max(0, mae), hit15: mfe >= 15 };
+  };
+
+  const result24 = calcWindow(24);
+  const result48 = calcWindow(48);
+  const result72 = calcWindow(72);
+  item.mfe24 = result24.mfe;
+  item.mfe48 = result48.mfe;
+  item.mfe72 = result72.mfe;
+  item.mae72 = result72.mae;
+  item.hit15_24 = result24.hit15;
+  item.hit15_48 = result48.hit15;
+  item.hit15_72 = result72.hit15;
+  item.lastEvaluatedAt = Date.now();
+  if (ageMs >= 72 * 3_600_000) item.status = "MATURE";
+  return item;
+}
+
+function updatePumpRadarWithPrice(symbol, price, now = Date.now()) {
+  const current = Number(price);
+  if (!(current > 0)) return false;
+  let changed = false;
+  for (const item of pumpRadar) {
+    if (item.symbol !== symbol || item.status !== "ACTIVE") continue;
+    const baseline = Number(item.baselinePrice);
+    if (!(baseline > 0)) continue;
+    const livePnl = ((current - baseline) / baseline) * 100;
+    const liveMfe = Math.max(Number(item.liveMfe) || 0, livePnl);
+    const liveMae = Math.max(Number(item.liveMae) || 0, -livePnl);
+    item.currentPrice = current;
+    item.livePnl = livePnl;
+    item.liveMfe = Math.max(0, liveMfe);
+    item.liveMae = Math.max(0, liveMae);
+    item.lastLiveAt = now;
+    item.mfe24 = Math.max(Number(item.mfe24) || 0, item.liveMfe);
+    item.mfe48 = Math.max(Number(item.mfe48) || 0, item.liveMfe);
+    item.mfe72 = Math.max(Number(item.mfe72) || 0, item.liveMfe);
+    item.mae72 = Math.max(Number(item.mae72) || 0, item.liveMae);
+    item.hit15_24 ||= item.mfe24 >= 15;
+    item.hit15_48 ||= item.mfe48 >= 15;
+    item.hit15_72 ||= item.mfe72 >= 15;
+    changed = true;
+  }
+  return changed;
+}
+
+async function refreshPumpRadar() {
+  const active = pumpRadar.filter((item) => item.status === "ACTIVE").slice(0, 30);
+  if (active.length) {
+    await Promise.allSettled(active.map(async (item) => {
+      if (item.lastLiveAt && Date.now() - Number(item.lastLiveAt) < 60_000) return;
+      const ticker = await getJson(`/fapi/v1/ticker/price?symbol=${item.symbol}`);
+      const price = Number(ticker.price);
+      priceCache.set(item.symbol, price);
+      updatePumpRadarWithPrice(item.symbol, price, Date.now());
+    }));
+  }
+  const pending = pumpRadar.filter((item) =>
+    item.status === "ACTIVE" &&
+    (!item.lastEvaluatedAt || Date.now() - Number(item.lastEvaluatedAt) > 15 * 60 * 1000)
+  ).slice(0, 10);
+  if (!pending.length) {
+    renderPumpRadar();
+    return;
+  }
+  const results = await Promise.allSettled(pending.map(evaluatePumpWatch));
+  if (results.some((result) => result.status === "fulfilled")) savePumpRadar();
+  renderPumpRadar();
+}
+
+function renderPumpRadar() {
+  if (!els.pumpTracked || !els.pumpStats) return;
+  const items = pumpRadar;
+  const matured = items.filter((item) => item.status === "MATURE");
+  const hit72 = items.filter((item) => item.hit15_72).length;
+  const avgMfe72 = avgFor(items, (item) => Number(item.mfe72) || 0) || 0;
+  const avgMae72 = avgFor(items, (item) => Number(item.mae72) || 0) || 0;
+  els.pumpStats.innerHTML = `
+    <div class="analysis-card"><span>Sledované</span><strong>${items.length}</strong><div class="note">${matured.length} uzavretých 72h okien</div></div>
+    <div class="analysis-card"><span>Hit +15% / 72h</span><strong>${items.length ? Math.round(hit72 / items.length * 100) : 0}%</strong><div class="note">${hit72} zásahov</div></div>
+    <div class="analysis-card"><span>Avg MFE 72h</span><strong class="good">${pct(avgMfe72)}</strong><div class="note">max pump po zaradení</div></div>
+    <div class="analysis-card"><span>Avg MAE 72h</span><strong class="bad">${maeDisplay(avgMae72)}</strong><div class="note">drawdown po zaradení</div></div>
+  `;
+  if (!items.length) {
+    els.pumpTracked.className = "list empty";
+    els.pumpTracked.textContent = "Zatiaľ nič nesledujeme.";
+    return;
+  }
+  els.pumpTracked.className = "list";
+  els.pumpTracked.innerHTML = items.map((item) => {
+    const ageHours = (Date.now() - Number(item.createdAt)) / 3_600_000;
+    const livePnl = Number.isFinite(Number(item.livePnl)) ? Number(item.livePnl) : 0;
+    const liveMfe = Number.isFinite(Number(item.liveMfe)) ? Number(item.liveMfe) : 0;
+    const liveMae = Number.isFinite(Number(item.liveMae)) ? Number(item.liveMae) : 0;
+    const liveNote = item.lastLiveAt ? `live ${formatDuration(Date.now() - Number(item.lastLiveAt))} dozadu` : "čaká na live cenu";
+    return `
+      <article class="card pump-card" data-pump-watch-card="${item.symbol}">
+        <div class="row-top">
+          <div><div class="symbol">${item.symbol}</div><div class="muted">${item.status} · ${ageHours.toFixed(1)}h · score ${item.grade} ${item.score}/100</div></div>
+          <span class="badge ${item.hit15_72 ? "good" : ""}">${item.hit15_72 ? "HIT +15%" : liveNote}</span>
+        </div>
+        <div class="metrics">
+          ${metric("Baseline", fmt(item.baselinePrice))}${metric("Pump hist.", `${item.pumpCount14d}× / ${pct(item.strongestPump)}`)}
+          ${metric("PnL teraz", coloredPct(livePnl))}${metric("Live MFE", coloredPct(liveMfe))}
+          ${metric("Live MAE", `<span class="bad">${maeDisplay(liveMae)}</span>`)}${metric("Cena teraz", item.currentPrice ? fmt(item.currentPrice) : "-")}
+          ${metric("MFE 24h", coloredPct(item.mfe24))}${metric("MFE 48h", coloredPct(item.mfe48))}
+          ${metric("MFE 72h", coloredPct(item.mfe72))}${metric("MAE 72h", `<span class="bad">${maeDisplay(item.mae72)}</span>`)}
+        </div>
+        <div class="note">Kompresia ${Number(item.compressionPct).toFixed(0)}% · volume creep ${Number(item.volumeCreep).toFixed(2)}× · 24h pri zaradení ${pct(item.change24AtWatch)}</div>
+      </article>`;
+  }).join("");
+  els.pumpTracked.querySelectorAll("[data-pump-watch-card]").forEach((card) => {
+    card.addEventListener("click", () => selectSymbol(card.dataset.pumpWatchCard));
+  });
+}
+
+function exportPumpRadarCsv() {
+  const header = [
+    "symbol", "status", "createdAt", "baselinePrice", "score", "grade", "pumpCount14d", "strongestPump",
+    "daysSincePump", "compressionPct", "volumeCreep", "change24AtWatch", "mfe24", "mfe48", "mfe72", "mae72", "hit15_24", "hit15_48", "hit15_72",
+  ];
+  const rows = pumpRadar.map((item) => [
+    item.symbol, item.status, new Date(item.createdAt).toISOString(), item.baselinePrice, item.score, item.grade,
+    item.pumpCount14d, item.strongestPump, item.daysSincePump, item.compressionPct, item.volumeCreep, item.change24AtWatch,
+    item.mfe24, item.mfe48, item.mfe72, item.mae72, item.hit15_24, item.hit15_48, item.hit15_72,
+  ]);
+  const csv = [header, ...rows]
+    .map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `fade-lab-pump-radar-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function pumpWatchKey(symbol) {
+  return `${symbol}|${new Date().toISOString().slice(0, 10)}`;
+}
+
+function addPumpWatch(candidate) {
+  if (pumpRadar.some((item) => item.symbol === candidate.symbol && item.status === "ACTIVE")) return;
+  pumpRadar.unshift({
+    id: crypto.randomUUID(),
+    key: pumpWatchKey(candidate.symbol),
+    symbol: candidate.symbol,
+    status: "ACTIVE",
+    createdAt: Date.now(),
+    baselinePrice: candidate.last,
+    score: candidate.score,
+    grade: candidate.grade,
+    pumpCount14d: candidate.pumpCount14d,
+    strongestPump: candidate.strongestPump,
+    daysSincePump: candidate.daysSincePump,
+    compressionPct: candidate.compressionPct,
+    volumeCreep: candidate.volumeCreep,
+    change24AtWatch: candidate.change24,
+    quoteVolume24: candidate.quoteVolume24,
+    currentPrice: candidate.last,
+    livePnl: 0,
+    liveMfe: 0,
+    liveMae: 0,
+    lastLiveAt: Date.now(),
+    mfe24: 0,
+    mfe48: 0,
+    mfe72: 0,
+    mae72: 0,
+    hit15_24: false,
+    hit15_48: false,
+    hit15_72: false,
+  });
+  savePumpRadar();
+  renderPumpCandidates();
+  renderPumpRadar();
+  connectPriceSocket();
+}
+
+async function scanPumpRadar() {
+  if (!els.pumpScanButton) return;
+  els.pumpScanButton.disabled = true;
+  els.pumpScanStatus.textContent = "Tahám tickery...";
+  els.pumpCandidates.className = "list empty";
+  els.pumpCandidates.textContent = "Skenujem opakovateľné pumpy.";
+  try {
+    const tickers = await getJson("/fapi/v1/ticker/24hr");
+    const universe = tickers
+      .filter((ticker) => ticker.symbol.endsWith("USDT") && !ticker.symbol.includes("_"))
+      .filter((ticker) => Number(ticker.quoteVolume) >= 3_000_000)
+      .sort((a, b) => Number(b.quoteVolume) - Number(a.quoteVolume))
+      .slice(0, 160);
+
+    const analyzed = [];
+    const batchSize = 8;
+    for (let index = 0; index < universe.length; index += batchSize) {
+      const batch = universe.slice(index, index + batchSize);
+      els.pumpScanStatus.textContent = `Analyzujem ${Math.min(index + batch.length, universe.length)}/${universe.length}...`;
+      const results = await Promise.allSettled(batch.map(async (ticker) => {
+        const [raw4h, raw1h] = await Promise.all([
+          getJson(`/fapi/v1/klines?symbol=${ticker.symbol}&interval=4h&limit=90`),
+          getJson(`/fapi/v1/klines?symbol=${ticker.symbol}&interval=1h&limit=120`),
+        ]);
+        return analyzePumpRadarSymbol(ticker, raw4h.map(klineToCandle), raw1h.map(klineToCandle));
+      }));
+      for (const result of results) {
+        if (result.status !== "fulfilled") continue;
+        const candidate = result.value;
+        if (candidate.pumpCount14d > 0 && candidate.score >= 35) analyzed.push(candidate);
+      }
+    }
+    lastPumpCandidates = analyzed.sort((a, b) => b.score - a.score).slice(0, 30);
+    els.pumpScanStatus.textContent = `${lastPumpCandidates.length} kandidátov`;
+    renderPumpCandidates();
+  } catch (error) {
+    els.pumpScanStatus.textContent = "Pump scan zlyhal";
+    els.pumpCandidates.className = "list empty";
+    els.pumpCandidates.textContent = error.message;
+  } finally {
+    els.pumpScanButton.disabled = false;
   }
 }
 
@@ -825,7 +1468,13 @@ function metric(label, value) {
   return `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`;
 }
 
-function addTrade(candidate, mode, triggerPrice) {
+function addTrade(candidate, mode, triggerPrice, triggerKind = "STANDARD") {
+  const isHtfTrigger = triggerKind === "HTF";
+  const effectiveStop = isHtfTrigger && candidate.side === "LONG"
+    ? Math.min(Number(candidate.stop), triggerPrice * 0.985)
+    : isHtfTrigger && candidate.side === "SHORT"
+      ? Math.max(Number(candidate.stop), triggerPrice * 1.015)
+      : Number(candidate.stop);
   const trade = {
     id: crypto.randomUUID(),
     symbol: candidate.symbol,
@@ -836,7 +1485,7 @@ function addTrade(candidate, mode, triggerPrice) {
     entry: mode === "market" ? candidate.last : null,
     createdAt: Date.now(),
     openedAt: mode === "market" ? Date.now() : null,
-    stop: candidate.stop,
+    stop: effectiveStop,
     tp1: candidate.tp1,
     tp2: candidate.tp2,
     setupScore: candidate.score,
@@ -847,6 +1496,10 @@ function addTrade(candidate, mode, triggerPrice) {
     setupWeakBounce: candidate.weakBounce,
     setupRetest: candidate.retest,
     setupRetestSource: candidate.retestSource,
+    setupHtfLevel: candidate.htfLevel,
+    setupHtfLevelType: candidate.htfLevelType,
+    setupHtfTouches: candidate.htfTouches,
+    setupHtfDistanceAtr: candidate.htfDistanceAtr,
     setupResistanceTouches: candidate.resistanceTouches,
     setupResistanceDistanceAtr: candidate.resistanceDistanceAtr,
     setupScoreGrade: candidate.scoreGrade,
@@ -863,15 +1516,16 @@ function addTrade(candidate, mode, triggerPrice) {
     setupHigherLow: candidate.hasHigherLow,
     setupCapitulationVolumeRatio: candidate.capitulationVolumeRatio,
     setupSweepLow: candidate.sweepLow,
+    triggerKind,
     mfe: 0,
     mae: 0,
     bestPrice: mode === "market" ? candidate.last : null,
     worstPrice: mode === "market" ? candidate.last : null,
-    triggerPhase: mode === "trigger" ? (candidate.side === "LONG" ? "WAIT_BREAKOUT" : "WAIT_RETEST") : null,
+    triggerPhase: mode === "trigger" ? (isHtfTrigger ? "WAIT_TOUCH" : candidate.side === "LONG" ? "WAIT_BREAKOUT" : "WAIT_RETEST") : null,
     triggerTouchedAt: null,
     triggerExpiresAt: mode === "trigger" ? Date.now() + TRIGGER_EXPIRES_MS : null,
-    triggerConfirmPrice: mode === "trigger" ? (candidate.side === "LONG" ? triggerPrice : triggerConfirmationPrice(triggerPrice)) : null,
-    triggerInvalidationPrice: mode === "trigger" ? (candidate.side === "LONG" ? candidate.stop : Math.min(candidate.stop, triggerPrice * (1 + TRIGGER_INVALIDATION_PCT / 100))) : null,
+    triggerConfirmPrice: mode === "trigger" ? (isHtfTrigger ? triggerPrice : candidate.side === "LONG" ? triggerPrice : triggerConfirmationPrice(triggerPrice)) : null,
+    triggerInvalidationPrice: mode === "trigger" ? (candidate.side === "LONG" ? effectiveStop : Math.min(effectiveStop, triggerPrice * (1 + TRIGGER_INVALIDATION_PCT / 100))) : null,
     bounceHigh: null,
     firstMove: null,
     mfeHitAt: null,
@@ -999,38 +1653,44 @@ function reconcileTradeFromCandles(trade, candles, now = Date.now()) {
       if (["INVALID", "EXPIRED"].includes(trade.status)) return;
       const expiresAt = Number(trade.triggerExpiresAt) || (Number(trade.createdAt) + TRIGGER_EXPIRES_MS);
       const triggerPrice = Number(trade.triggerPrice);
+      const confirmPrice = Number(trade.triggerConfirmPrice) || triggerPrice;
       const invalidationPrice = Number(trade.triggerInvalidationPrice) || Number(trade.stop);
+      let phase = trade.triggerPhase || "WAIT_BREAKOUT";
       for (const candle of candles) {
         if (candle.time > expiresAt) {
           trade.status = "EXPIRED";
-          trade.backfillNote = "Long breakout expiroval po 60 minútach.";
+          trade.backfillNote = "Long trigger expiroval po 2 hodinách.";
           break;
         }
         if (candle.low <= invalidationPrice) {
           trade.status = "INVALID";
-          trade.backfillNote = "Sweep low zlyhalo ešte pred breakoutom; bez vstupu.";
+          trade.backfillNote = "Long support/breakout zlyhal pred vstupom; bez vstupu.";
           break;
         }
-        if (candle.high >= triggerPrice) {
+        const openedByHtfTouch = phase === "WAIT_TOUCH" && candle.low <= triggerPrice;
+        const openedByBreakout = phase === "WAIT_BREAKOUT" && candle.high >= triggerPrice;
+        if (openedByBreakout || openedByHtfTouch) {
           trade.status = "OPEN";
           trade.triggerPhase = "CONFIRMED";
           trade.entry = triggerPrice;
           trade.openedAt = candle.time;
-          trade.bestPrice = triggerPrice;
-          trade.worstPrice = triggerPrice;
+          trade.bestPrice = trade.entry;
+          trade.worstPrice = trade.entry;
           openedAt = candle.time;
-          trade.backfillNote = "Long otvorený po breakoute micro resistance.";
+          trade.backfillNote = openedByHtfTouch ? "Long otvorený priamo na dotyku 1h supportu." : "Long otvorený po breakoute micro resistance.";
           break;
         }
       }
       trade.triggerExpiresAt = expiresAt;
-      trade.triggerConfirmPrice = triggerPrice;
+      trade.triggerConfirmPrice = confirmPrice;
       trade.triggerInvalidationPrice = invalidationPrice;
       if (!openedAt) {
         if (!["INVALID", "EXPIRED"].includes(trade.status)) {
           trade.status = "WAITING";
-          trade.triggerPhase = "WAIT_BREAKOUT";
-          trade.backfillNote = "Čaká sa na potvrdený breakout nad micro resistance.";
+          trade.triggerPhase = phase;
+          trade.backfillNote = phase === "WAIT_TOUCH"
+            ? "Čaká sa na dotyk 1h supportu."
+            : "Čaká sa na potvrdený breakout nad micro resistance.";
         }
         trade.reconciledAt = now;
         trade.backfillCandles = candles.length;
@@ -1047,7 +1707,19 @@ function reconcileTradeFromCandles(trade, candles, now = Date.now()) {
     for (const candle of candles) {
       if (candle.time > expiresAt) {
         trade.status = "EXPIRED";
-        trade.backfillNote = "Rejection trigger expiroval po 60 minútach.";
+        trade.backfillNote = "Rejection trigger expiroval po 2 hodinách.";
+        break;
+      }
+      if (phase === "WAIT_TOUCH" && candle.high >= trade.triggerPrice) {
+        trade.status = "OPEN";
+        phase = "CONFIRMED";
+        trade.triggerPhase = phase;
+        trade.entry = trade.triggerPrice;
+        trade.openedAt = candle.time;
+        trade.bestPrice = trade.triggerPrice;
+        trade.worstPrice = trade.triggerPrice;
+        openedAt = candle.time;
+        trade.backfillNote = "Short otvorený priamo na dotyku 1h rezistencie.";
         break;
       }
       if (phase === "WAIT_RETEST" && candle.high >= trade.triggerPrice) {
@@ -1083,7 +1755,9 @@ function reconcileTradeFromCandles(trade, candles, now = Date.now()) {
     if (!openedAt) {
       if (!["INVALID", "EXPIRED"].includes(trade.status)) {
         trade.status = "WAITING";
-        trade.backfillNote = phase === "WAIT_REJECTION"
+        trade.backfillNote = phase === "WAIT_TOUCH"
+          ? "Čaká sa na dotyk 1h rezistencie."
+          : phase === "WAIT_REJECTION"
           ? "Retest zasiahnutý; čaká sa na rejection confirmation."
           : "Čaká sa na retest short úrovne.";
       }
@@ -1193,26 +1867,29 @@ function updateTradeWithPrice(trade, price, now = Date.now()) {
   if (trade.status === "WAITING" && trade.mode === "trigger") {
     if (trade.side === "LONG") {
       const expiresAt = Number(trade.triggerExpiresAt) || (Number(trade.createdAt) + TRIGGER_EXPIRES_MS);
+      const confirmPrice = Number(trade.triggerConfirmPrice) || Number(trade.triggerPrice);
       trade.triggerExpiresAt = expiresAt;
       trade.triggerPhase ||= "WAIT_BREAKOUT";
       if (now >= expiresAt) {
         trade.status = "EXPIRED";
-        trade.backfillNote = "Long breakout expiroval po 60 minútach.";
+        trade.backfillNote = "Long trigger expiroval po 2 hodinách.";
         return;
       }
       if (price <= Number(trade.stop)) {
         trade.status = "INVALID";
-        trade.backfillNote = "Sweep low zlyhalo ešte pred breakoutom; bez vstupu.";
+        trade.backfillNote = "Long support/breakout zlyhal pred vstupom; bez vstupu.";
         return;
       }
-      if (price >= Number(trade.triggerPrice)) {
+      const openedByHtfTouch = trade.triggerPhase === "WAIT_TOUCH" && price <= Number(trade.triggerPrice);
+      const openedByBreakout = trade.triggerPhase === "WAIT_BREAKOUT" && price >= Number(trade.triggerPrice);
+      if (openedByBreakout || openedByHtfTouch) {
         trade.status = "OPEN";
         trade.triggerPhase = "CONFIRMED";
-        trade.entry = price;
+        trade.entry = openedByHtfTouch ? Number(trade.triggerPrice) : price;
         trade.openedAt = now;
-        trade.bestPrice = price;
-        trade.worstPrice = price;
-        trade.backfillNote = "Long otvorený po breakoute micro resistance.";
+        trade.bestPrice = trade.entry;
+        trade.worstPrice = trade.entry;
+        trade.backfillNote = openedByHtfTouch ? "Long otvorený priamo na dotyku 1h supportu." : "Long otvorený po breakoute micro resistance.";
       }
     } else {
     const expiresAt = Number(trade.triggerExpiresAt) || (Number(trade.createdAt) + TRIGGER_EXPIRES_MS);
@@ -1225,7 +1902,17 @@ function updateTradeWithPrice(trade, price, now = Date.now()) {
 
     if (now >= expiresAt) {
       trade.status = "EXPIRED";
-      trade.backfillNote = "Rejection trigger expiroval po 60 minútach.";
+      trade.backfillNote = "Rejection trigger expiroval po 2 hodinách.";
+      return;
+    }
+    if (trade.triggerPhase === "WAIT_TOUCH" && price >= trade.triggerPrice) {
+      trade.status = "OPEN";
+      trade.triggerPhase = "CONFIRMED";
+      trade.entry = Number(trade.triggerPrice);
+      trade.openedAt = now;
+      trade.bestPrice = trade.entry;
+      trade.worstPrice = trade.entry;
+      trade.backfillNote = "Short otvorený priamo na dotyku 1h rezistencie.";
       return;
     }
     if (trade.triggerPhase === "WAIT_RETEST" && price >= trade.triggerPrice) {
@@ -1277,7 +1964,11 @@ function updateTradeWithPrice(trade, price, now = Date.now()) {
 }
 
 function connectPriceSocket() {
-  const symbols = [...new Set(trades.map((trade) => trade.symbol.toLowerCase()))].sort();
+  const tradeSymbols = trades.map((trade) => trade.symbol.toLowerCase());
+  const pumpSymbols = pumpRadar
+    .filter((item) => item.status === "ACTIVE")
+    .map((item) => item.symbol.toLowerCase());
+  const symbols = [...new Set([...tradeSymbols, ...pumpSymbols])].sort();
   const key = symbols.join(",");
   if (key === socketSymbolsKey) return;
   socketSymbolsKey = key;
@@ -1303,11 +1994,14 @@ function connectPriceSocket() {
     for (const trade of trades) {
       if (trade.symbol === symbol) updateTradeWithPrice(trade, price, now);
     }
+    updatePumpRadarWithPrice(symbol, price, now);
     saveTrades();
+    savePumpRadar();
     renderTrades();
+    renderPumpRadar();
   };
   priceSocket.onclose = () => {
-    if (trades.length) setTimeout(connectPriceSocket, 1500);
+    if (trades.length || pumpRadar.some((item) => item.status === "ACTIVE")) setTimeout(connectPriceSocket, 1500);
   };
 }
 
@@ -1316,12 +2010,13 @@ function tradeCardHtml(trade) {
   const isOpen = trade.status === "OPEN" && Number.isFinite(Number(trade.entry));
   const currentPnl = isOpen && price ? tradePnlPct(trade, price) : null;
   const isLong = trade.side === "LONG";
+  const isHtfTouchTrigger = trade.triggerKind === "HTF" || trade.triggerPhase === "WAIT_TOUCH";
   const statusText = trade.status === "WAITING"
-    ? isLong ? "ČAKÁ NA BREAKOUT" : trade.triggerPhase === "WAIT_REJECTION" ? "RETEST HIT / ČAKÁ NA REJECTION" : "ČAKÁ NA RETEST"
+    ? isHtfTouchTrigger ? `ČAKÁ NA 1H ${isLong ? "SUPPORT" : "REZISTENCIU"}` : isLong ? "ČAKÁ NA BREAKOUT" : trade.triggerPhase === "WAIT_REJECTION" ? "RETEST HIT / ČAKÁ NA REJECTION" : "ČAKÁ NA RETEST"
     : trade.status;
   const pnlClass = isOpen ? currentPnl >= 0 ? "positive-bg" : "negative-bg" : "";
   const confirmValue = trade.mode === "trigger"
-    ? isLong ? trade.triggerPrice : trade.triggerConfirmPrice || triggerConfirmationPrice(trade.triggerPrice)
+    ? isLong ? trade.triggerConfirmPrice || trade.triggerPrice : trade.triggerConfirmPrice || triggerConfirmationPrice(trade.triggerPrice)
     : null;
   return `
     <article class="card side-${isLong ? "long" : "short"} ${pnlClass}" data-symbol-card="${trade.symbol}" data-trade-id="${trade.id}">
@@ -1332,8 +2027,8 @@ function tradeCardHtml(trade) {
         ${metric("MAE", isOpen ? `<span class="bad">${maeDisplay(trade.mae)}</span>` : "-")}${metric("Auto close", isOpen ? formatDuration(Math.max(1000, AUTO_CLOSE_AFTER_MS - (Date.now() - Number(trade.openedAt)))) : "-")}
       </div>
       <div class="levels">
-        ${metric(isLong ? "Breakout" : "Retest", fmt(trade.triggerPrice))}
-        ${metric(isLong ? "Confirm" : "Rejection confirm", trade.mode === "trigger" ? fmt(confirmValue) : "market")}
+        ${metric(isHtfTouchTrigger ? isLong ? "1h support touch" : "1h resistance touch" : isLong ? "Breakout" : "Retest", fmt(trade.triggerPrice))}
+        ${metric(isHtfTouchTrigger ? "Entry" : isLong ? "Confirm" : "Rejection confirm", trade.mode === "trigger" ? fmt(confirmValue) : "market")}
         ${metric("Invalidácia", fmt(trade.triggerInvalidationPrice || trade.stop))}
       </div>
       <div class="levels">${metric("Stop", fmt(trade.stop))}${metric(isLong ? "TP bounce" : "TP fade", fmt(trade.tp2))}${metric("Setup score", `${trade.setupScore ?? "-"} / 100`)}</div>
@@ -1428,7 +2123,12 @@ async function autoCloseExpiredTrades(now = Date.now()) {
 }
 
 function uniqueJournalItems() {
-  return [...new Map(journal.map((item) => [item.id, item])).values()];
+  const seen = new Map();
+  for (const item of journal) {
+    const key = journalTradeKey(item);
+    if (!seen.has(key)) seen.set(key, item);
+  }
+  return [...seen.values()];
 }
 
 function avgFor(items, getter) {
@@ -1729,14 +2429,19 @@ function setScannerSide(side) {
 }
 
 els.scanButton.addEventListener("click", scan);
+if (els.pumpScanButton) els.pumpScanButton.addEventListener("click", scanPumpRadar);
+if (els.exportPumpRadarButton) els.exportPumpRadarButton.addEventListener("click", exportPumpRadarCsv);
 els.tabs.forEach((tab) => {
   tab.addEventListener("click", () => {
     els.tabs.forEach((item) => item.classList.toggle("active", item === tab));
     const showJournal = tab.dataset.tab === "journal";
-    els.scannerView.classList.toggle("active", !showJournal);
+    const showPump = tab.dataset.tab === "pump";
+    els.scannerView.classList.toggle("active", !showJournal && !showPump);
     els.journalView.classList.toggle("active", showJournal);
-    if (!showJournal) setScannerSide(tab.dataset.tab === "long" ? "LONG" : "SHORT");
+    if (els.pumpRadarView) els.pumpRadarView.classList.toggle("active", showPump);
+    if (!showJournal && !showPump) setScannerSide(tab.dataset.tab === "long" ? "LONG" : "SHORT");
     if (showJournal) backfillJournalExcursions();
+    if (showPump) refreshPumpRadar();
     if (!showJournal && selectedSymbol) requestAnimationFrame(() => renderChart(chartCandles));
   });
 });
@@ -1759,10 +2464,28 @@ els.clearJournalButton.addEventListener("click", () => {
   renderJournal();
 });
 els.exportJournalButton.addEventListener("click", exportJournalCsv);
+if (els.importJournalButton && els.importJournalInput) {
+  els.importJournalButton.addEventListener("click", () => els.importJournalInput.click());
+  els.importJournalInput.addEventListener("change", async () => {
+    const file = els.importJournalInput.files?.[0];
+    if (!file) return;
+    try {
+      const { added, total } = importJournalCsvText(await file.text());
+      alert(`Import hotový: pridané ${added} z ${total} riadkov. Duplicitné obchody som preskočil.`);
+    } catch (error) {
+      alert(`CSV sa nepodarilo importovať: ${error.message}`);
+    } finally {
+      els.importJournalInput.value = "";
+    }
+  });
+}
 
 normalizeAllTrades();
 setScannerSide("SHORT");
 renderJournal();
+renderPumpRadar();
+refreshPumpRadar();
+importBundledJournalSeed().then(renderJournal);
 backfillJournalExcursions();
 reconcileTrades(true).then(() => {
   renderTrades();
@@ -1771,6 +2494,7 @@ reconcileTrades(true).then(() => {
 });
 connectPriceSocket();
 setInterval(refreshTrades, 5000);
+setInterval(refreshPumpRadar, 15 * 60 * 1000);
 setInterval(() => {
   if (selectedSymbol && document.visibilityState === "visible") loadChart(selectedSymbol);
 }, 30000);
