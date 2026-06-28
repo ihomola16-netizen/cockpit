@@ -129,6 +129,11 @@
       </section>
 
       <section id="journalView" class="view">
+        <div class="journal-kind-tabs" role="tablist" aria-label="Typ journalu">
+          <button class="journal-kind-tab active" data-journal-kind="bounce">Long / Short bounce</button>
+          <button class="journal-kind-tab" data-journal-kind="pump">Pump Radar</button>
+        </div>
+        <div id="bounceJournalPane" class="journal-kind-pane active">
         <section class="panel journal-panel">
         <div class="panel-head">
           <h2>Journal</h2>
@@ -138,6 +143,11 @@
             <button id="exportJournalButton" class="ghost">Export CSV</button>
             <button id="clearJournalButton" class="ghost">Vymazat journal</button>
           </div>
+        </div>
+        <div class="journal-scope-tabs" aria-label="Rozsah bounce journalu">
+          <button class="journal-scope-tab active" data-journal-scope="current">Aktuálna HTF touch logika</button>
+          <button class="journal-scope-tab" data-journal-scope="legacy">Legacy setupy</button>
+          <button class="journal-scope-tab" data-journal-scope="all">Všetko</button>
         </div>
         <div id="journalAnalysis" class="analysis-grid journal-summary"></div>
         <div id="journalPeriods" class="journal-periods"></div>
@@ -151,6 +161,28 @@
         </div>
         <div id="journal" class="journal-days empty">Ziadne uzavrete sledovania.</div>
         </section>
+        </div>
+        <div id="pumpJournalPane" class="journal-kind-pane">
+          <section class="panel journal-panel">
+            <div class="panel-head">
+              <div>
+                <h2>Pump Radar journal</h2>
+                <span class="muted">Automaticky uzavreté sledovania po 72 hodinách</span>
+              </div>
+              <button id="exportPumpJournalButton" class="ghost">Export CSV</button>
+            </div>
+            <div id="pumpJournalStats" class="analysis-grid journal-summary"></div>
+            <div id="pumpRecoveryStats" class="pump-recovery-summary"></div>
+            <div id="pumpControlStats" class="pump-control-summary"></div>
+            <div class="journal-section-head">
+              <div>
+                <h3>Ukončené 72h okná</h3>
+                <p>MFE a MAE od ceny pri zaradení do radaru</p>
+              </div>
+            </div>
+            <div id="pumpJournal" class="journal-days empty">Zatiaľ žiadne ukončené radarové sledovania.</div>
+          </section>
+        </div>
       </section>
     </main>
 
